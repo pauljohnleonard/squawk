@@ -235,7 +235,7 @@ fn read_settings(path: &PathBuf) -> Option<StoredSettings> {
 }
 
 fn resolve_settings_path() -> Result<PathBuf> {
-    if let Some(proj_dirs) = ProjectDirs::from("com", "OrgBrain", "Squark") {
+    if let Some(proj_dirs) = ProjectDirs::from("com", "OrgBrain", "squawk") {
         let dir = proj_dirs.config_dir().to_path_buf();
         fs::create_dir_all(&dir)
             .with_context(|| format!("Failed to create config directory {}", dir.display()))?;
@@ -244,7 +244,7 @@ fn resolve_settings_path() -> Result<PathBuf> {
 
     let fallback = env::current_dir()
         .context("Failed to resolve current directory for fallback settings path")?
-        .join(".squark");
+        .join(".squawk");
     fs::create_dir_all(&fallback).with_context(|| {
         format!(
             "Failed to create fallback settings directory {}",

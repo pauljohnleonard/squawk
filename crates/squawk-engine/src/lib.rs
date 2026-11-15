@@ -206,6 +206,7 @@ impl BreathExciter {
     }
 
     #[inline]
+    #[allow(clippy::too_many_arguments)]
     fn sample(
         &mut self,
         gate: bool,
@@ -512,8 +513,11 @@ impl Engine {
 
     fn update_breath_embouchure_filter(&mut self) {
         let center_hz = (self.params.frequency_hz * self.breath_embouchure_tune_ratio).max(1.0);
-        self.breath_feedback_filter
-            .set_params(self.sample_rate_hz, center_hz, self.breath_embouchure_q);
+        self.breath_feedback_filter.set_params(
+            self.sample_rate_hz,
+            center_hz,
+            self.breath_embouchure_q,
+        );
     }
 
     #[inline]
@@ -525,7 +529,7 @@ impl Engine {
                     self.velocities[mode] = 0.0;
                 }
 
-                let pulse_amp = amplitude.max(0.0).min(1.0) * self.excitation_gain;
+                let pulse_amp = amplitude.clamp(0.0, 1.0) * self.excitation_gain;
                 self.strike_exciter.trigger(pulse_amp);
             }
             ExciterMode::Breath => {
@@ -540,7 +544,7 @@ impl Engine {
     #[inline]
     pub fn next_sample(&mut self) -> f32 {
         let pressure =
-            self.params.amplitude.max(0.0).min(1.0) * self.excitation_gain * self.breath_pressure;
+            self.params.amplitude.clamp(0.0, 1.0) * self.excitation_gain * self.breath_pressure;
 
         let delayed = if self.breath_embouchure_delay_samples == 0 {
             self.last_output
@@ -619,13 +623,13 @@ impl Engine {
     fn rebuild_modes(&mut self) {
         let max_freq = self.max_mode_frequency();
         let mut weights = [0.0; MAX_MODES];
-        for mode in 0..MAX_MODES {
+        for (mode, weight) in weights.iter_mut().enumerate() {
             let harmonic = (mode + 1) as f32;
             let stretched = harmonic.powf(self.inharmonicity);
             let target = (self.params.frequency_hz * stretched).min(max_freq);
             self.mode_frequency[mode] = target;
             self.stiffness[mode] = stiffness_for_frequency(target, self.mass[mode]);
-            weights[mode] = 1.0 / harmonic;
+            *weight = 1.0 / harmonic;
         }
         self.update_damping();
         self.normalize_mix_weights(weights);
@@ -637,8 +641,8 @@ impl Engine {
     }
 
     fn update_damping(&mut self) {
-        for mode in 0..MAX_MODES {
-            self.damping[mode] = damping_for_frequency(
+        for (mode, damping) in self.damping.iter_mut().enumerate() {
+            *damping = damping_for_frequency(
                 self.mode_frequency[mode],
                 self.mass[mode],
                 self.damping_ratio,
@@ -648,8 +652,8 @@ impl Engine {
 
     fn normalize_mix_weights(&mut self, candidates: [f32; MAX_MODES]) {
         let sum: f32 = candidates.iter().copied().sum::<f32>().max(0.000_1);
-        for mode in 0..MAX_MODES {
-            self.mix_weights[mode] = candidates[mode] / sum;
+        for (mix_weight, candidate) in self.mix_weights.iter_mut().zip(candidates.iter()) {
+            *mix_weight = *candidate / sum;
         }
     }
 
@@ -706,7 +710,7 @@ mod tests {
         for _ in 0..20_000 {
             let s = engine.next_sample();
             assert!(s.is_finite());
-            assert!(s >= -1.0 && s <= 1.0);
+            assert!((-1.0..=1.0).contains(&s));
         }
     }
 }

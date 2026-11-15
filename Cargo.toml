@@ -1,8 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-  "crates/squark-engine",
-  "crates/squark-app",
+  "crates/squawk-engine",
+  "crates/squawk-app",
 ]
 
 [profile.release]

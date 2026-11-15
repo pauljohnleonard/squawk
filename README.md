@@ -1,11 +1,11 @@
-# squark
+# squawk
 
 A low-level, realtime sound synthesis engine.
 
 This repo is structured so you can develop on macOS (CoreAudio) and move to a 64-bit Raspberry Pi (Linux/aarch64) with minimal changes:
 
-- Engine core: `crates/squark-engine` (no allocations/locks in the audio callback path)
-- Audio host app: `crates/squark-app` (CPAL output stream)
+- Engine core: `crates/squawk-engine` (no allocations/locks in the audio callback path)
+- Audio host app: `crates/squawk-app` (CPAL output stream)
 
 ## Realtime notes (sub-10ms)
 
@@ -16,7 +16,7 @@ To hit sub-10ms end-to-end latency, you typically need:
 - Avoid allocations/locks/syscalls in the audio callback
 - On Linux: realtime scheduling + a low-latency kernel and/or `PREEMPT_RT` helps a lot
 
-`squark-app` requests a 128-frame buffer where the backend supports it, and falls back gracefully if not.
+`squawk-app` requests a 128-frame buffer where the backend supports it, and falls back gracefully if not.
 
 ## Prereqs (macOS)
 
@@ -38,7 +38,15 @@ Rust toolchain (recommended via rustup):
 
 From the repo root:
 
-`source "$HOME/.cargo/env" && cargo run -p squark-app --release`
+`source "$HOME/.cargo/env" && cargo run -p squawk-app --release`
+
+## Optional: one-command checks (recommended)
+
+If you install `just`, you can run the common “CI-ish” checks with a single command:
+
+- Install: `brew install just`
+- Run checks (format + clippy + tests): `just`
+- Run the app: `just run-release`
 
 By default the synth is gated off (silent) until you play a MIDI note.
 
@@ -49,19 +57,34 @@ The current sound engine is a single mass–spring–damper integrated with a se
 - The app will print detected MIDI inputs on startup.
 - List inputs without starting audio:
 
-  `source "$HOME/.cargo/env" && cargo run -p squark-app --release -- --list-midi`
+  `source "$HOME/.cargo/env" && cargo run -p squawk-app --release -- --list-midi`
 
 - Select a port via CLI (preferred):
 
-  `source "$HOME/.cargo/env" && cargo run -p squark-app --release -- --midi-port 1`
+  `source "$HOME/.cargo/env" && cargo run -p squawk-app --release -- --midi-port 1`
 
 - Legacy fallback: set `MIDI_PORT` env (0-based) if you prefer.
+
+### No MIDI device? Use your computer keyboard
+
+Open the UI and enable **Computer keyboard → MIDI notes**.
+
+- Notes: `A W S E D F T G Y H U J K` (chromatic, starting at C4; upper notes: `O L P ;`)
+- Octave: Arrow Up/Down
+- Velocity: Arrow Left/Right
+
+### Debug: pitch estimate (f0)
+
+In the UI, open **Analysis (debug)** and enable **Estimate pitch (f0)**.
+
+- The readout shows cents error relative to the **last Note On** (plus estimated $f_0$ and confidence).
+- With **Track around last Note On** enabled, the estimator “locks” around that note’s expected frequency (lowest latency / most stable for debugging).
 
 ### Latency tuning (macOS)
 
 - Use `--buffer-frames` to request smaller buffers (e.g. 64 or 128):
 
-  `source "$HOME/.cargo/env" && cargo run -p squark-app --release -- --buffer-frames 64`
+  `source "$HOME/.cargo/env" && cargo run -p squawk-app --release -- --buffer-frames 64`
 
 - Change sample rate if needed (default is 48k):
 
@@ -88,7 +111,7 @@ On the Pi (aarch64 OS recommended):
 
 3. Build + run:
 
-   `source "$HOME/.cargo/env" && cargo build -p squark-app --release && ./target/release/squark-app`
+   `source "$HOME/.cargo/env" && cargo build -p squawk-app --release && ./target/release/squawk-app`
 
 ### Low-latency tips (Pi/Linux)
 
@@ -99,7 +122,7 @@ On the Pi (aarch64 OS recommended):
 - For best results, use a low-latency kernel and enable realtime scheduling (rtkit).
 - Request small buffers on launch:
 
-  `source "$HOME/.cargo/env" && cargo run -p squark-app --release -- --buffer-frames 64`
+  `source "$HOME/.cargo/env" && cargo run -p squawk-app --release -- --buffer-frames 64`
 
 ## Optional: cross-compile + deploy from macOS
 

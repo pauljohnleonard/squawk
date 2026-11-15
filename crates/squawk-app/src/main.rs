@@ -1,3 +1,4 @@
+mod analysis;
 mod settings;
 mod ui;
 
@@ -10,7 +11,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use midir::{Ignore, MidiInput};
 use parking_lot::Mutex;
 
-use squark_engine::{
+use squawk_engine::{
     DEFAULT_BREATH_AUTO_LEVEL as ENGINE_DEFAULT_BREATH_AUTO_LEVEL,
     DEFAULT_BREATH_FEEDBACK as ENGINE_DEFAULT_BREATH_FEEDBACK,
     DEFAULT_BREATH_NOISE_CUTOFF_HZ as ENGINE_DEFAULT_BREATH_NOISE_CUTOFF_HZ,
@@ -24,6 +25,8 @@ use squark_engine::{
 };
 
 use settings::SettingsStore;
+
+use analysis::AudioTap;
 
 pub(crate) const DEFAULT_ATTACK_MS: f32 = 2.0;
 pub(crate) const DEFAULT_RELEASE_MS: f32 = 400.0;
@@ -58,6 +61,9 @@ struct ControlBlock {
     frequency_bits: AtomicU32,
     amplitude_bits: AtomicU32,
     active_note: AtomicU8,
+    last_note_on_note: AtomicU8,
+    last_note_on_hz_bits: AtomicU32,
+    last_note_on_counter: AtomicU32,
     trigger_counter: AtomicU32,
     exciter_mode: AtomicU8,
     attack_ms_bits: AtomicU32,
@@ -82,6 +88,9 @@ impl ControlBlock {
             frequency_bits: AtomicU32::new(initial.frequency_hz.to_bits()),
             amplitude_bits: AtomicU32::new(initial.amplitude.to_bits()),
             active_note: AtomicU8::new(0),
+            last_note_on_note: AtomicU8::new(0),
+            last_note_on_hz_bits: AtomicU32::new(initial.frequency_hz.to_bits()),
+            last_note_on_counter: AtomicU32::new(0),
             trigger_counter: AtomicU32::new(0),
             exciter_mode: AtomicU8::new(ExciterMode::Strike.as_u8()),
             attack_ms_bits: AtomicU32::new(DEFAULT_ATTACK_MS.to_bits()),
@@ -276,6 +285,31 @@ impl ControlBlock {
     #[inline]
     fn peak_level(&self) -> f32 {
         f32::from_bits(self.peak_bits.load(Ordering::Relaxed))
+    }
+
+    #[inline]
+    fn last_note_on_note(&self) -> Option<u8> {
+        if self.last_note_on_counter.load(Ordering::Relaxed) == 0 {
+            None
+        } else {
+            Some(self.last_note_on_note.load(Ordering::Relaxed))
+        }
+    }
+
+    #[inline]
+    fn last_note_on_counter(&self) -> u32 {
+        self.last_note_on_counter.load(Ordering::Relaxed)
+    }
+
+    #[inline]
+    fn last_note_on_hz(&self) -> Option<f32> {
+        if self.last_note_on_counter.load(Ordering::Relaxed) == 0 {
+            None
+        } else {
+            Some(f32::from_bits(
+                self.last_note_on_hz_bits.load(Ordering::Relaxed),
+            ))
+        }
     }
 
     #[inline]
@@ -706,8 +740,8 @@ fn parse_positive_u32(label: &str, value: &str) -> anyhow::Result<u32> {
 }
 
 fn print_usage() {
-    println!("squark-app usage:");
-    println!("  cargo run -p squark-app --release -- [OPTIONS]\n");
+    println!("squawk-app usage:");
+    println!("  cargo run -p squawk-app --release -- [OPTIONS]\n");
     println!("Options:");
     println!("  --list-midi           List available MIDI inputs and exit");
     println!("  --midi-port <index>   Force a specific MIDI input (0-based)");
@@ -777,6 +811,12 @@ fn main() -> anyhow::Result<()> {
     let midi_learn = Arc::new(MidiLearnState::new());
     midi_learn.load_assignments(&snapshot.midi_assignments);
 
+    // Analysis tap: lock-free ring buffer for UI-side inspection (pitch tracking, etc).
+    // ~0.25s is plenty for low-latency trackers and small plots.
+    let sample_rate_hz = config.sample_rate.0 as f32;
+    let tap_len = (sample_rate_hz * 0.25) as usize;
+    let audio_tap = Arc::new(AudioTap::new(sample_rate_hz, tap_len));
+
     // Start MIDI input on a non-audio thread. The callback only touches atomics.
     // Keep the connection in scope so it stays active.
     let _midi_conn = match start_midi(
@@ -793,15 +833,30 @@ fn main() -> anyhow::Result<()> {
     };
 
     let stream = match sample_format {
-        cpal::SampleFormat::F32 => {
-            build_stream::<f32>(&device, &config, channels, params, control.clone())?
-        }
-        cpal::SampleFormat::I16 => {
-            build_stream::<i16>(&device, &config, channels, params, control.clone())?
-        }
-        cpal::SampleFormat::U16 => {
-            build_stream::<u16>(&device, &config, channels, params, control.clone())?
-        }
+        cpal::SampleFormat::F32 => build_stream::<f32>(
+            &device,
+            &config,
+            channels,
+            params,
+            control.clone(),
+            audio_tap.clone(),
+        )?,
+        cpal::SampleFormat::I16 => build_stream::<i16>(
+            &device,
+            &config,
+            channels,
+            params,
+            control.clone(),
+            audio_tap.clone(),
+        )?,
+        cpal::SampleFormat::U16 => build_stream::<u16>(
+            &device,
+            &config,
+            channels,
+            params,
+            control.clone(),
+            audio_tap.clone(),
+        )?,
         other => anyhow::bail!("Unsupported sample format: {other:?}"),
     };
 
@@ -809,13 +864,18 @@ fn main() -> anyhow::Result<()> {
     println!("Running. Close the UI window or hit Ctrl+C to quit.");
     println!("Tip: pass --list-midi / --midi-port / --buffer-frames / --sample-rate as needed.");
 
-    ui::launch(control.clone(), midi_learn.clone(), settings.clone())?;
+    ui::launch(
+        control.clone(),
+        midi_learn.clone(),
+        settings.clone(),
+        audio_tap.clone(),
+    )?;
 
     Ok(())
 }
 
 fn list_midi_ports() -> anyhow::Result<()> {
-    let mut midi_in = MidiInput::new("squark")?;
+    let mut midi_in = MidiInput::new("squawk")?;
     midi_in.ignore(Ignore::None);
 
     let in_ports = midi_in.ports();
@@ -841,7 +901,7 @@ fn start_midi(
     settings: Arc<SettingsStore>,
     midi_port_override: Option<usize>,
 ) -> anyhow::Result<Option<midir::MidiInputConnection<MidiContext>>> {
-    let mut midi_in = MidiInput::new("squark")?;
+    let mut midi_in = MidiInput::new("squawk")?;
     midi_in.ignore(Ignore::None);
 
     let in_ports = midi_in.ports();
@@ -878,7 +938,7 @@ fn start_midi(
     let ctx = MidiContext::new(control, midi_learn, settings);
     Ok(Some(midi_in.connect(
         selected_port,
-        "squark-midi-in",
+        "squawk-midi-in",
         midi_callback,
         ctx,
     )?))
@@ -949,6 +1009,11 @@ fn note_on(control: &Arc<ControlBlock>, note: u8, velocity: u8) {
     let amp = (velocity as f32 / 127.0) * 0.25;
 
     control.active_note.store(note, Ordering::Relaxed);
+    control.last_note_on_note.store(note, Ordering::Relaxed);
+    control
+        .last_note_on_hz_bits
+        .store(freq.to_bits(), Ordering::Relaxed);
+    control.last_note_on_counter.fetch_add(1, Ordering::Relaxed);
     control
         .frequency_bits
         .store(freq.to_bits(), Ordering::Relaxed);
@@ -1023,17 +1088,19 @@ fn build_stream<T>(
     channels: usize,
     params: EngineParams,
     control: Arc<ControlBlock>,
+    audio_tap: Arc<AudioTap>,
 ) -> anyhow::Result<cpal::Stream>
 where
     T: FromF32 + cpal::SizedSample + Send + 'static,
 {
     let err_fn = |err| eprintln!("stream error: {err}");
 
-    let requested_buffer = config.buffer_size.clone();
+    let requested_buffer = config.buffer_size;
 
     let try_build = |cfg: &cpal::StreamConfig| {
         let mut engine = Engine::new(cfg.sample_rate.0 as f32, params);
         let control = control.clone();
+        let audio_tap = audio_tap.clone();
         let mut trigger_seen = control.trigger_counter();
         device.build_output_stream(
             cfg,
@@ -1060,7 +1127,7 @@ where
                     engine.trigger(snapshot.amplitude);
                     trigger_seen = snapshot.trigger_counter;
                 }
-                let block_peak = write_interleaved::<T>(&mut engine, data, channels);
+                let block_peak = write_interleaved::<T>(&mut engine, data, channels, &audio_tap);
                 let frames = if channels == 0 {
                     0
                 } else {
@@ -1102,7 +1169,12 @@ fn log_buffer_acceptance(label: &str, buffer_size: &cpal::BufferSize) {
 }
 
 #[inline]
-fn write_interleaved<T: FromF32>(engine: &mut Engine, out: &mut [T], channels: usize) -> f32 {
+fn write_interleaved<T: FromF32>(
+    engine: &mut Engine,
+    out: &mut [T],
+    channels: usize,
+    audio_tap: &AudioTap,
+) -> f32 {
     if channels == 0 {
         return 0.0;
     }
@@ -1111,6 +1183,7 @@ fn write_interleaved<T: FromF32>(engine: &mut Engine, out: &mut [T], channels: u
     let frames = out.len() / channels;
     for frame_idx in 0..frames {
         let s = engine.next_sample();
+        audio_tap.push(s);
         block_peak = block_peak.max(s.abs());
         for ch in 0..channels {
             let idx = frame_idx * channels + ch;

@@ -1,5 +1,5 @@
 [package]
-name = "squark-app"
+name = "squawk-app"
 version = "0.1.0"
 edition = "2024"
 
@@ -8,8 +8,9 @@ anyhow = "1"
 cpal = "0.15"
 midir = "0.10"
 eframe = { version = "0.27", default-features = false, features = ["glow", "default_fonts"] }
+egui_plot = "0.27"
 parking_lot = "0.12"
 directories = "5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-squark-engine = { path = "../squark-engine" }
+squawk-engine = { path = "../squawk-engine" }

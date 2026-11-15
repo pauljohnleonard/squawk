@@ -692,6 +692,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui_plot"
+version = "0.27.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7854b86dc1c2d352c5270db3d600011daa913d6b554141a03939761323288a1"
+dependencies = [
+ "egui",
+]
+
+[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1977,22 +1986,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "squark-app"
+name = "squawk-app"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "cpal",
  "directories",
  "eframe",
+ "egui_plot",
  "midir",
  "parking_lot",
  "serde",
  "serde_json",
- "squark-engine",
+ "squawk-engine",
 ]
 
 [[package]]
-name = "squark-engine"
+name = "squawk-engine"
 version = "0.1.0"
 
 [[package]]
