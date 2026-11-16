@@ -38,6 +38,112 @@ struct StoredSettings {
     breath_feedback: f32,
     #[serde(default = "default_breath_auto_level")]
     breath_auto_level: f32,
+    #[serde(default = "default_instrument")]
+    instrument: u8,
+    #[serde(default = "default_handpan_scale")]
+    handpan_scale: u8,
+    #[serde(default = "default_handpan_ding")]
+    handpan_ding: u8,
+    #[serde(default = "default_handpan_tuning")]
+    handpan_tuning: u8,
+    #[serde(default = "default_handpan_decay")]
+    handpan_decay: f32,
+    #[serde(default = "default_handpan_detune_cents")]
+    handpan_detune_cents: f32,
+    #[serde(default = "default_handpan_coupling")]
+    handpan_coupling: f32,
+    #[serde(default = "default_handpan_hit")]
+    handpan_hit: f32,
+    #[serde(default = "default_handpan_glide")]
+    handpan_glide: f32,
+    #[serde(default = "default_handpan_fundamental")]
+    handpan_fundamental: f32,
+    #[serde(default = "default_handpan_octave")]
+    handpan_octave: f32,
+    #[serde(default = "default_handpan_fifth")]
+    handpan_fifth: f32,
+    #[serde(default = "default_handpan_higher_decay")]
+    handpan_higher_decay: f32,
+    #[serde(default = "default_support_level")]
+    support_level: f32,
+    #[serde(default = "default_support_pulse")]
+    support_pulse: f32,
+    #[serde(default = "default_support_width")]
+    support_width: f32,
+    #[serde(default = "default_support_wander")]
+    support_wander: f32,
+    #[serde(default = "default_support_drift")]
+    support_drift: f32,
+    #[serde(default = "default_support_motion")]
+    support_motion: f32,
+    #[serde(default = "default_support_fade")]
+    support_fade: f32,
+    #[serde(default = "default_reverb_handpan")]
+    reverb_handpan: f32,
+    #[serde(default = "default_reverb_support")]
+    reverb_support: f32,
+    #[serde(default = "default_reverb_decay")]
+    reverb_decay: f32,
+    #[serde(default = "default_reverb_tone")]
+    reverb_tone: f32,
+    #[serde(default = "default_ding_wash")]
+    ding_wash: u8,
+    #[serde(default = "default_ding_shape")]
+    ding_shape: f32,
+    #[serde(default = "default_ding_spread")]
+    ding_spread: f32,
+    #[serde(default = "default_ding_brightness")]
+    ding_brightness: f32,
+    #[serde(default = "default_ding_strings")]
+    ding_strings: f32,
+    #[serde(default = "default_ding_formant_1")]
+    ding_formant_1: f32,
+    #[serde(default = "default_ding_formant_2")]
+    ding_formant_2: f32,
+    #[serde(default = "default_ding_formant_3")]
+    ding_formant_3: f32,
+    #[serde(default = "default_ding_resonance")]
+    ding_resonance: f32,
+    #[serde(default = "default_ding_resonance")]
+    ding_q_1: f32,
+    #[serde(default = "default_ding_resonance")]
+    ding_q_2: f32,
+    #[serde(default = "default_ding_resonance")]
+    ding_q_3: f32,
+    #[serde(default = "default_mix_level")]
+    mix_handpan: f32,
+    #[serde(default = "default_mix_level")]
+    mix_ding: f32,
+    #[serde(default = "default_mix_level")]
+    mix_recent: f32,
+    #[serde(default = "default_mix_level")]
+    mix_second: f32,
+    #[serde(default = "default_mix_level")]
+    mix_bass: f32,
+    #[serde(default = "default_mix_level")]
+    mix_taps: f32,
+    #[serde(default = "default_echo_feedback")]
+    echo_feedback: f32,
+    #[serde(default = "default_pan")]
+    pan_handpan: f32,
+    #[serde(default = "default_pan")]
+    pan_ding: f32,
+    #[serde(default = "default_pan")]
+    pan_recent: f32,
+    #[serde(default = "default_pan")]
+    pan_second: f32,
+    #[serde(default = "default_pan")]
+    pan_bass: f32,
+    #[serde(default = "default_formant_rate")]
+    formant_rate: f32,
+    #[serde(default = "default_formant_depth")]
+    formant_depth: f32,
+    #[serde(default = "default_support_part_flags")]
+    support_muted: [bool; 5],
+    #[serde(default = "default_support_part_flags")]
+    support_solo: [bool; 5],
+    #[serde(default = "default_keyboard_rows_set_place")]
+    keyboard_rows_set_place: bool,
     midi_cc: HashMap<String, u8>,
 }
 
@@ -57,6 +163,59 @@ impl Default for StoredSettings {
             breath_noise_cutoff_hz: crate::DEFAULT_BREATH_NOISE_CUTOFF_HZ,
             breath_feedback: crate::DEFAULT_BREATH_FEEDBACK,
             breath_auto_level: crate::DEFAULT_BREATH_AUTO_LEVEL,
+            instrument: default_instrument(),
+            handpan_scale: default_handpan_scale(),
+            handpan_ding: default_handpan_ding(),
+            handpan_tuning: default_handpan_tuning(),
+            handpan_decay: crate::DEFAULT_HANDPAN_DECAY,
+            handpan_detune_cents: crate::DEFAULT_HANDPAN_DETUNE_CENTS,
+            handpan_coupling: crate::DEFAULT_HANDPAN_COUPLING,
+            handpan_hit: crate::DEFAULT_HANDPAN_HIT,
+            handpan_glide: crate::DEFAULT_HANDPAN_GLIDE,
+            handpan_fundamental: crate::DEFAULT_HANDPAN_FUNDAMENTAL,
+            handpan_octave: crate::DEFAULT_HANDPAN_OCTAVE,
+            handpan_fifth: crate::DEFAULT_HANDPAN_FIFTH,
+            handpan_higher_decay: crate::DEFAULT_HANDPAN_HIGHER_DECAY,
+            support_level: crate::DEFAULT_SUPPORT_LEVEL,
+            support_pulse: crate::DEFAULT_SUPPORT_PULSE,
+            support_width: crate::DEFAULT_SUPPORT_WIDTH,
+            support_wander: crate::DEFAULT_SUPPORT_WANDER,
+            support_drift: crate::DEFAULT_SUPPORT_DRIFT,
+            support_motion: crate::DEFAULT_SUPPORT_MOTION,
+            support_fade: crate::DEFAULT_SUPPORT_FADE,
+            reverb_handpan: crate::DEFAULT_REVERB_HANDPAN,
+            reverb_support: crate::DEFAULT_REVERB_SUPPORT,
+            reverb_decay: crate::DEFAULT_REVERB_DECAY,
+            reverb_tone: crate::DEFAULT_REVERB_TONE,
+            ding_wash: default_ding_wash(),
+            ding_shape: crate::DEFAULT_DING_SHAPE,
+            ding_spread: crate::DEFAULT_DING_SPREAD,
+            ding_brightness: crate::DEFAULT_DING_BRIGHTNESS,
+            ding_strings: crate::DEFAULT_DING_STRINGS,
+            ding_formant_1: crate::DEFAULT_DING_FORMANT_1,
+            ding_formant_2: crate::DEFAULT_DING_FORMANT_2,
+            ding_formant_3: crate::DEFAULT_DING_FORMANT_3,
+            ding_resonance: crate::DEFAULT_DING_RESONANCE,
+            ding_q_1: crate::DEFAULT_DING_RESONANCE,
+            ding_q_2: crate::DEFAULT_DING_RESONANCE,
+            ding_q_3: crate::DEFAULT_DING_RESONANCE,
+            mix_handpan: crate::DEFAULT_MIX_LEVEL,
+            mix_ding: crate::DEFAULT_MIX_LEVEL,
+            mix_recent: crate::DEFAULT_MIX_LEVEL,
+            mix_second: crate::DEFAULT_MIX_LEVEL,
+            mix_bass: crate::DEFAULT_MIX_LEVEL,
+            mix_taps: crate::DEFAULT_MIX_LEVEL,
+            echo_feedback: crate::DEFAULT_ECHO_FEEDBACK,
+            pan_handpan: crate::DEFAULT_PAN,
+            pan_ding: crate::DEFAULT_PAN,
+            pan_recent: crate::DEFAULT_PAN,
+            pan_second: crate::DEFAULT_PAN,
+            pan_bass: crate::DEFAULT_PAN,
+            formant_rate: crate::DEFAULT_FORMANT_RATE,
+            formant_depth: crate::DEFAULT_FORMANT_DEPTH,
+            support_muted: default_support_part_flags(),
+            support_solo: default_support_part_flags(),
+            keyboard_rows_set_place: default_keyboard_rows_set_place(),
             midi_cc: HashMap::new(),
         }
     }
@@ -76,6 +235,59 @@ pub(crate) struct SettingsSnapshot {
     pub breath_noise_cutoff_hz: f32,
     pub breath_feedback: f32,
     pub breath_auto_level: f32,
+    pub instrument: u8,
+    pub handpan_scale: u8,
+    pub handpan_ding: u8,
+    pub handpan_tuning: u8,
+    pub handpan_decay: f32,
+    pub handpan_detune_cents: f32,
+    pub handpan_coupling: f32,
+    pub handpan_hit: f32,
+    pub handpan_glide: f32,
+    pub handpan_fundamental: f32,
+    pub handpan_octave: f32,
+    pub handpan_fifth: f32,
+    pub handpan_higher_decay: f32,
+    pub support_level: f32,
+    pub support_pulse: f32,
+    pub support_width: f32,
+    pub support_wander: f32,
+    pub support_drift: f32,
+    pub support_motion: f32,
+    pub support_fade: f32,
+    pub reverb_handpan: f32,
+    pub reverb_support: f32,
+    pub reverb_decay: f32,
+    pub reverb_tone: f32,
+    pub ding_wash: u8,
+    pub ding_shape: f32,
+    pub ding_spread: f32,
+    pub ding_brightness: f32,
+    pub ding_strings: f32,
+    pub ding_formant_1: f32,
+    pub ding_formant_2: f32,
+    pub ding_formant_3: f32,
+    pub ding_resonance: f32,
+    pub ding_q_1: f32,
+    pub ding_q_2: f32,
+    pub ding_q_3: f32,
+    pub mix_handpan: f32,
+    pub mix_ding: f32,
+    pub mix_recent: f32,
+    pub mix_second: f32,
+    pub mix_bass: f32,
+    pub mix_taps: f32,
+    pub echo_feedback: f32,
+    pub pan_handpan: f32,
+    pub pan_ding: f32,
+    pub pan_recent: f32,
+    pub pan_second: f32,
+    pub pan_bass: f32,
+    pub formant_rate: f32,
+    pub formant_depth: f32,
+    pub support_muted: u8,
+    pub support_solo: u8,
+    pub keyboard_rows_set_place: bool,
     pub midi_assignments: Vec<(ParameterId, u8)>,
 }
 
@@ -103,6 +315,61 @@ impl From<StoredSettings> for SettingsSnapshot {
                 .clamp(value.breath_noise_cutoff_hz),
             breath_feedback: ParameterId::BreathFeedback.clamp(value.breath_feedback),
             breath_auto_level: ParameterId::BreathAutoLevel.clamp(value.breath_auto_level),
+            instrument: value.instrument.min(1),
+            handpan_scale: value.handpan_scale.min(crate::HANDPAN_SCALE_COUNT - 1),
+            handpan_ding: value
+                .handpan_ding
+                .clamp(crate::HANDPAN_DING_MIN, crate::HANDPAN_DING_MAX),
+            handpan_tuning: u8::from(value.handpan_tuning != 0),
+            handpan_decay: ParameterId::HandpanDecay.clamp(value.handpan_decay),
+            handpan_detune_cents: ParameterId::HandpanDetuneCents.clamp(value.handpan_detune_cents),
+            handpan_coupling: ParameterId::HandpanCoupling.clamp(value.handpan_coupling),
+            handpan_hit: ParameterId::HandpanHit.clamp(value.handpan_hit),
+            handpan_glide: ParameterId::HandpanGlide.clamp(value.handpan_glide),
+            handpan_fundamental: ParameterId::HandpanFundamental.clamp(value.handpan_fundamental),
+            handpan_octave: ParameterId::HandpanOctave.clamp(value.handpan_octave),
+            handpan_fifth: ParameterId::HandpanFifth.clamp(value.handpan_fifth),
+            handpan_higher_decay: ParameterId::HandpanHigherDecay.clamp(value.handpan_higher_decay),
+            support_level: ParameterId::SupportLevel.clamp(value.support_level),
+            support_pulse: ParameterId::SupportPulse.clamp(value.support_pulse),
+            support_width: ParameterId::SupportWidth.clamp(value.support_width),
+            support_wander: ParameterId::SupportWander.clamp(value.support_wander),
+            support_drift: ParameterId::SupportDrift.clamp(value.support_drift),
+            support_motion: ParameterId::SupportMotion.clamp(value.support_motion),
+            support_fade: ParameterId::SupportFade.clamp(value.support_fade),
+            reverb_handpan: ParameterId::ReverbHandpan.clamp(value.reverb_handpan),
+            reverb_support: ParameterId::ReverbSupport.clamp(value.reverb_support),
+            reverb_decay: ParameterId::ReverbDecay.clamp(value.reverb_decay),
+            reverb_tone: ParameterId::ReverbTone.clamp(value.reverb_tone),
+            ding_wash: value.ding_wash.min(2),
+            ding_shape: ParameterId::DingShape.clamp(value.ding_shape),
+            ding_spread: ParameterId::DingSpread.clamp(value.ding_spread),
+            ding_brightness: ParameterId::DingBrightness.clamp(value.ding_brightness),
+            ding_strings: ParameterId::DingStrings.clamp(value.ding_strings),
+            ding_formant_1: ParameterId::DingFormant1.clamp(value.ding_formant_1),
+            ding_formant_2: ParameterId::DingFormant2.clamp(value.ding_formant_2),
+            ding_formant_3: ParameterId::DingFormant3.clamp(value.ding_formant_3),
+            ding_resonance: ParameterId::DingResonance.clamp(value.ding_resonance),
+            ding_q_1: ParameterId::DingQ1.clamp(value.ding_q_1),
+            ding_q_2: ParameterId::DingQ2.clamp(value.ding_q_2),
+            ding_q_3: ParameterId::DingQ3.clamp(value.ding_q_3),
+            mix_handpan: ParameterId::MixHandpan.clamp(value.mix_handpan),
+            mix_ding: ParameterId::MixDing.clamp(value.mix_ding),
+            mix_recent: ParameterId::MixRecent.clamp(value.mix_recent),
+            mix_second: ParameterId::MixSecond.clamp(value.mix_second),
+            mix_bass: ParameterId::MixBass.clamp(value.mix_bass),
+            mix_taps: ParameterId::MixTaps.clamp(value.mix_taps),
+            echo_feedback: ParameterId::EchoFeedback.clamp(value.echo_feedback),
+            pan_handpan: ParameterId::PanHandpan.clamp(value.pan_handpan),
+            pan_ding: ParameterId::PanDing.clamp(value.pan_ding),
+            pan_recent: ParameterId::PanRecent.clamp(value.pan_recent),
+            pan_second: ParameterId::PanSecond.clamp(value.pan_second),
+            pan_bass: ParameterId::PanBass.clamp(value.pan_bass),
+            formant_rate: ParameterId::FormantRate.clamp(value.formant_rate),
+            formant_depth: ParameterId::FormantDepth.clamp(value.formant_depth),
+            support_muted: squawk_engine::support_part_mask(value.support_muted),
+            support_solo: squawk_engine::support_part_mask(value.support_solo),
+            keyboard_rows_set_place: value.keyboard_rows_set_place,
             midi_assignments,
         }
     }
@@ -145,7 +412,95 @@ impl SettingsStore {
                 ParameterId::BreathNoiseCutoffHz => data.breath_noise_cutoff_hz = clamped,
                 ParameterId::BreathFeedback => data.breath_feedback = clamped,
                 ParameterId::BreathAutoLevel => data.breath_auto_level = clamped,
+                ParameterId::HandpanDecay => data.handpan_decay = clamped,
+                ParameterId::HandpanDetuneCents => data.handpan_detune_cents = clamped,
+                ParameterId::HandpanCoupling => data.handpan_coupling = clamped,
+                ParameterId::HandpanHit => data.handpan_hit = clamped,
+                ParameterId::HandpanGlide => data.handpan_glide = clamped,
+                ParameterId::HandpanFundamental => data.handpan_fundamental = clamped,
+                ParameterId::HandpanOctave => data.handpan_octave = clamped,
+                ParameterId::HandpanFifth => data.handpan_fifth = clamped,
+                ParameterId::HandpanHigherDecay => data.handpan_higher_decay = clamped,
+                ParameterId::SupportLevel => data.support_level = clamped,
+                ParameterId::SupportPulse => data.support_pulse = clamped,
+                ParameterId::SupportWidth => data.support_width = clamped,
+                ParameterId::SupportWander => data.support_wander = clamped,
+                ParameterId::SupportDrift => data.support_drift = clamped,
+                ParameterId::SupportMotion => data.support_motion = clamped,
+                ParameterId::SupportFade => data.support_fade = clamped,
+                ParameterId::ReverbHandpan => data.reverb_handpan = clamped,
+                ParameterId::ReverbSupport => data.reverb_support = clamped,
+                ParameterId::ReverbDecay => data.reverb_decay = clamped,
+                ParameterId::ReverbTone => data.reverb_tone = clamped,
+                ParameterId::DingShape => data.ding_shape = clamped,
+                ParameterId::DingSpread => data.ding_spread = clamped,
+                ParameterId::DingBrightness => data.ding_brightness = clamped,
+                ParameterId::DingStrings => data.ding_strings = clamped,
+                ParameterId::DingFormant1 => data.ding_formant_1 = clamped,
+                ParameterId::DingFormant2 => data.ding_formant_2 = clamped,
+                ParameterId::DingFormant3 => data.ding_formant_3 = clamped,
+                ParameterId::DingResonance => data.ding_resonance = clamped,
+                ParameterId::DingQ1 => data.ding_q_1 = clamped,
+                ParameterId::DingQ2 => data.ding_q_2 = clamped,
+                ParameterId::DingQ3 => data.ding_q_3 = clamped,
+                ParameterId::MixHandpan => data.mix_handpan = clamped,
+                ParameterId::MixDing => data.mix_ding = clamped,
+                ParameterId::MixRecent => data.mix_recent = clamped,
+                ParameterId::MixSecond => data.mix_second = clamped,
+                ParameterId::MixBass => data.mix_bass = clamped,
+                ParameterId::MixTaps => data.mix_taps = clamped,
+                ParameterId::EchoFeedback => data.echo_feedback = clamped,
+                ParameterId::PanHandpan => data.pan_handpan = clamped,
+                ParameterId::PanDing => data.pan_ding = clamped,
+                ParameterId::PanRecent => data.pan_recent = clamped,
+                ParameterId::PanSecond => data.pan_second = clamped,
+                ParameterId::PanBass => data.pan_bass = clamped,
+                ParameterId::FormantRate => data.formant_rate = clamped,
+                ParameterId::FormantDepth => data.formant_depth = clamped,
             }
+        }
+        self.persist_current_state()
+    }
+
+    pub(crate) fn update_handpan_layout(&self, scale: u8, ding: u8, tuning: u8) -> Result<()> {
+        {
+            let mut data = self.state.lock();
+            data.handpan_scale = scale.min(crate::HANDPAN_SCALE_COUNT - 1);
+            data.handpan_ding = ding.clamp(crate::HANDPAN_DING_MIN, crate::HANDPAN_DING_MAX);
+            data.handpan_tuning = u8::from(tuning != 0);
+        }
+        self.persist_current_state()
+    }
+
+    pub(crate) fn update_ding_wash(&self, wash: u8) -> Result<()> {
+        {
+            let mut data = self.state.lock();
+            data.ding_wash = wash.min(2);
+        }
+        self.persist_current_state()
+    }
+
+    pub(crate) fn update_support_parts(&self, muted: [bool; 5], solo: [bool; 5]) -> Result<()> {
+        {
+            let mut data = self.state.lock();
+            data.support_muted = muted;
+            data.support_solo = solo;
+        }
+        self.persist_current_state()
+    }
+
+    pub(crate) fn update_keyboard_rows_set_place(&self, enabled: bool) -> Result<()> {
+        {
+            let mut data = self.state.lock();
+            data.keyboard_rows_set_place = enabled;
+        }
+        self.persist_current_state()
+    }
+
+    pub(crate) fn update_instrument(&self, instrument: u8) -> Result<()> {
+        {
+            let mut data = self.state.lock();
+            data.instrument = instrument.min(1);
         }
         self.persist_current_state()
     }
@@ -190,6 +545,58 @@ impl SettingsStore {
             data.breath_noise_cutoff_hz = crate::DEFAULT_BREATH_NOISE_CUTOFF_HZ;
             data.breath_feedback = crate::DEFAULT_BREATH_FEEDBACK;
             data.breath_auto_level = crate::DEFAULT_BREATH_AUTO_LEVEL;
+            data.handpan_scale = default_handpan_scale();
+            data.handpan_ding = default_handpan_ding();
+            data.handpan_tuning = default_handpan_tuning();
+            data.handpan_decay = crate::DEFAULT_HANDPAN_DECAY;
+            data.handpan_detune_cents = crate::DEFAULT_HANDPAN_DETUNE_CENTS;
+            data.handpan_coupling = crate::DEFAULT_HANDPAN_COUPLING;
+            data.handpan_hit = crate::DEFAULT_HANDPAN_HIT;
+            data.handpan_glide = crate::DEFAULT_HANDPAN_GLIDE;
+            data.handpan_fundamental = crate::DEFAULT_HANDPAN_FUNDAMENTAL;
+            data.handpan_octave = crate::DEFAULT_HANDPAN_OCTAVE;
+            data.handpan_fifth = crate::DEFAULT_HANDPAN_FIFTH;
+            data.handpan_higher_decay = crate::DEFAULT_HANDPAN_HIGHER_DECAY;
+            data.support_level = crate::DEFAULT_SUPPORT_LEVEL;
+            data.support_pulse = crate::DEFAULT_SUPPORT_PULSE;
+            data.support_width = crate::DEFAULT_SUPPORT_WIDTH;
+            data.support_wander = crate::DEFAULT_SUPPORT_WANDER;
+            data.support_drift = crate::DEFAULT_SUPPORT_DRIFT;
+            data.support_motion = crate::DEFAULT_SUPPORT_MOTION;
+            data.support_fade = crate::DEFAULT_SUPPORT_FADE;
+            data.reverb_handpan = crate::DEFAULT_REVERB_HANDPAN;
+            data.reverb_support = crate::DEFAULT_REVERB_SUPPORT;
+            data.reverb_decay = crate::DEFAULT_REVERB_DECAY;
+            data.reverb_tone = crate::DEFAULT_REVERB_TONE;
+            data.ding_wash = default_ding_wash();
+            data.ding_shape = crate::DEFAULT_DING_SHAPE;
+            data.ding_spread = crate::DEFAULT_DING_SPREAD;
+            data.ding_brightness = crate::DEFAULT_DING_BRIGHTNESS;
+            data.ding_strings = crate::DEFAULT_DING_STRINGS;
+            data.ding_formant_1 = crate::DEFAULT_DING_FORMANT_1;
+            data.ding_formant_2 = crate::DEFAULT_DING_FORMANT_2;
+            data.ding_formant_3 = crate::DEFAULT_DING_FORMANT_3;
+            data.ding_resonance = crate::DEFAULT_DING_RESONANCE;
+            data.ding_q_1 = crate::DEFAULT_DING_RESONANCE;
+            data.ding_q_2 = crate::DEFAULT_DING_RESONANCE;
+            data.ding_q_3 = crate::DEFAULT_DING_RESONANCE;
+            data.mix_handpan = crate::DEFAULT_MIX_LEVEL;
+            data.mix_ding = crate::DEFAULT_MIX_LEVEL;
+            data.mix_recent = crate::DEFAULT_MIX_LEVEL;
+            data.mix_second = crate::DEFAULT_MIX_LEVEL;
+            data.mix_bass = crate::DEFAULT_MIX_LEVEL;
+            data.mix_taps = crate::DEFAULT_MIX_LEVEL;
+            data.echo_feedback = crate::DEFAULT_ECHO_FEEDBACK;
+            data.pan_handpan = crate::DEFAULT_PAN;
+            data.pan_ding = crate::DEFAULT_PAN;
+            data.pan_recent = crate::DEFAULT_PAN;
+            data.pan_second = crate::DEFAULT_PAN;
+            data.pan_bass = crate::DEFAULT_PAN;
+            data.formant_rate = crate::DEFAULT_FORMANT_RATE;
+            data.formant_depth = crate::DEFAULT_FORMANT_DEPTH;
+            data.support_muted = default_support_part_flags();
+            data.support_solo = default_support_part_flags();
+            data.keyboard_rows_set_place = default_keyboard_rows_set_place();
         }
         self.persist_current_state()
     }
@@ -292,4 +699,164 @@ fn default_breath_auto_level() -> f32 {
 
 fn default_exciter_mode() -> u8 {
     0
+}
+
+fn default_handpan_scale() -> u8 {
+    crate::DEFAULT_HANDPAN_SCALE
+}
+
+fn default_handpan_ding() -> u8 {
+    crate::DEFAULT_HANDPAN_DING
+}
+
+fn default_handpan_tuning() -> u8 {
+    crate::DEFAULT_HANDPAN_TUNING
+}
+
+fn default_instrument() -> u8 {
+    0
+}
+
+fn default_handpan_decay() -> f32 {
+    crate::DEFAULT_HANDPAN_DECAY
+}
+
+fn default_handpan_detune_cents() -> f32 {
+    crate::DEFAULT_HANDPAN_DETUNE_CENTS
+}
+
+fn default_handpan_coupling() -> f32 {
+    crate::DEFAULT_HANDPAN_COUPLING
+}
+
+fn default_handpan_hit() -> f32 {
+    crate::DEFAULT_HANDPAN_HIT
+}
+
+fn default_handpan_glide() -> f32 {
+    crate::DEFAULT_HANDPAN_GLIDE
+}
+
+fn default_handpan_fundamental() -> f32 {
+    crate::DEFAULT_HANDPAN_FUNDAMENTAL
+}
+
+fn default_handpan_octave() -> f32 {
+    crate::DEFAULT_HANDPAN_OCTAVE
+}
+
+fn default_handpan_fifth() -> f32 {
+    crate::DEFAULT_HANDPAN_FIFTH
+}
+
+fn default_handpan_higher_decay() -> f32 {
+    crate::DEFAULT_HANDPAN_HIGHER_DECAY
+}
+
+fn default_support_level() -> f32 {
+    crate::DEFAULT_SUPPORT_LEVEL
+}
+
+fn default_support_pulse() -> f32 {
+    crate::DEFAULT_SUPPORT_PULSE
+}
+
+fn default_support_width() -> f32 {
+    crate::DEFAULT_SUPPORT_WIDTH
+}
+
+fn default_support_wander() -> f32 {
+    crate::DEFAULT_SUPPORT_WANDER
+}
+
+fn default_support_drift() -> f32 {
+    crate::DEFAULT_SUPPORT_DRIFT
+}
+
+fn default_support_motion() -> f32 {
+    crate::DEFAULT_SUPPORT_MOTION
+}
+
+fn default_support_fade() -> f32 {
+    crate::DEFAULT_SUPPORT_FADE
+}
+
+fn default_reverb_handpan() -> f32 {
+    crate::DEFAULT_REVERB_HANDPAN
+}
+
+fn default_reverb_support() -> f32 {
+    crate::DEFAULT_REVERB_SUPPORT
+}
+
+fn default_reverb_decay() -> f32 {
+    crate::DEFAULT_REVERB_DECAY
+}
+
+fn default_reverb_tone() -> f32 {
+    crate::DEFAULT_REVERB_TONE
+}
+
+fn default_ding_wash() -> u8 {
+    crate::DEFAULT_DING_WASH
+}
+
+fn default_ding_shape() -> f32 {
+    crate::DEFAULT_DING_SHAPE
+}
+
+fn default_ding_spread() -> f32 {
+    crate::DEFAULT_DING_SPREAD
+}
+
+fn default_ding_brightness() -> f32 {
+    crate::DEFAULT_DING_BRIGHTNESS
+}
+
+fn default_ding_strings() -> f32 {
+    crate::DEFAULT_DING_STRINGS
+}
+
+fn default_ding_formant_1() -> f32 {
+    crate::DEFAULT_DING_FORMANT_1
+}
+
+fn default_ding_formant_2() -> f32 {
+    crate::DEFAULT_DING_FORMANT_2
+}
+
+fn default_ding_formant_3() -> f32 {
+    crate::DEFAULT_DING_FORMANT_3
+}
+
+fn default_ding_resonance() -> f32 {
+    crate::DEFAULT_DING_RESONANCE
+}
+
+fn default_mix_level() -> f32 {
+    crate::DEFAULT_MIX_LEVEL
+}
+
+fn default_echo_feedback() -> f32 {
+    crate::DEFAULT_ECHO_FEEDBACK
+}
+
+fn default_pan() -> f32 {
+    crate::DEFAULT_PAN
+}
+
+fn default_formant_rate() -> f32 {
+    crate::DEFAULT_FORMANT_RATE
+}
+
+fn default_formant_depth() -> f32 {
+    crate::DEFAULT_FORMANT_DEPTH
+}
+
+fn default_support_part_flags() -> [bool; 5] {
+    [false; 5]
+}
+
+fn default_keyboard_rows_set_place() -> bool {
+    false
 }

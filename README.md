@@ -20,25 +20,25 @@ To hit sub-10ms end-to-end latency, you typically need:
 
 ## Prereqs (macOS)
 
-Rust toolchain (recommended via rustup):
+Rust toolchain via Homebrew `rustup`:
 
 1. Install rustup:
 
    `brew install rustup`
 
-2. Install the stable toolchain:
+2. Put Homebrew's `cargo` and `rustc` on your PATH. This formula is keg-only, and it no longer installs the `~/.cargo/bin` proxies (`rustup-init` is gone), so `source "$HOME/.cargo/env"` will not find `cargo`:
+
+   `echo 'export PATH="$(brew --prefix rustup)/bin:$PATH"' >> ~/.zshrc`
+
+3. Open a new terminal, then install the stable toolchain:
 
    `rustup default stable`
 
-3. Ensure Cargo is on your PATH in new terminals:
-
-   `echo 'source "$HOME/.cargo/env"' >> ~/.zshrc`
-
 ## Run on macOS
 
-From the repo root:
+From the repo root, in a terminal that has the PATH line above:
 
-`source "$HOME/.cargo/env" && cargo run -p squawk-app --release`
+`cargo run -p squawk-app --release`
 
 ## Optional: one-command checks (recommended)
 
@@ -57,11 +57,11 @@ The current sound engine is a single mass–spring–damper integrated with a se
 - The app will print detected MIDI inputs on startup.
 - List inputs without starting audio:
 
-  `source "$HOME/.cargo/env" && cargo run -p squawk-app --release -- --list-midi`
+  `cargo run -p squawk-app --release -- --list-midi`
 
 - Select a port via CLI (preferred):
 
-  `source "$HOME/.cargo/env" && cargo run -p squawk-app --release -- --midi-port 1`
+  `cargo run -p squawk-app --release -- --midi-port 1`
 
 - Legacy fallback: set `MIDI_PORT` env (0-based) if you prefer.
 
@@ -69,9 +69,13 @@ The current sound engine is a single mass–spring–damper integrated with a se
 
 Open the UI and enable **Computer keyboard → MIDI notes**.
 
-- Notes: `A W S E D F T G Y H U J K` (chromatic, starting at C4; upper notes: `O L P ;`)
-- Octave: Arrow Up/Down
-- Velocity: Arrow Left/Right
+- Modal voice: `A W S E D F T G Y H U J K` (chromatic, starting at C4; upper notes: `O L P ;`)
+- Octave (modal only): Arrow Up/Down, or the Octave buttons
+- Velocity: Arrow Left/Right, or the Velocity buttons
+- Handpan: each column is one pad, low to high (`D3 A3 Bb3 C4 D4 E4 F4 A4`)
+  - Loud: `Z X C V B N M ,`
+  - Softer: `S D F G H J K L`
+  - Softest: `E R T Y U I O P`
 
 ### Debug: pitch estimate (f0)
 
@@ -84,7 +88,7 @@ In the UI, open **Analysis (debug)** and enable **Estimate pitch (f0)**.
 
 - Use `--buffer-frames` to request smaller buffers (e.g. 64 or 128):
 
-  `source "$HOME/.cargo/env" && cargo run -p squawk-app --release -- --buffer-frames 64`
+  `cargo run -p squawk-app --release -- --buffer-frames 64`
 
 - Change sample rate if needed (default is 48k):
 

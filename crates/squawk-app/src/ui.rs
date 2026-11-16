@@ -9,11 +9,14 @@ use eframe::{self, egui};
 use egui_plot::{Line, Plot, PlotBounds, PlotPoints};
 
 use crate::{
-    ControlBlock, MidiLearnState, ParameterId,
+    ControlBlock, Instrument, MidiLearnState, ParameterId,
     analysis::{AudioTap, PitchEstimate, estimate_pitch_nccf},
     settings::SettingsStore,
 };
-use squawk_engine::ExciterMode;
+use squawk_engine::{
+    ExciterMode, HANDPAN_DING_MAX, HANDPAN_DING_MIN, HANDPAN_SCALE_COUNT, handpan_notes,
+    handpan_scale_name, support_part_flags,
+};
 
 pub fn launch(
     control: Arc<ControlBlock>,
@@ -23,8 +26,8 @@ pub fn launch(
 ) -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([860.0, 560.0])
-            .with_min_inner_size([640.0, 420.0]),
+            .with_inner_size([1040.0, 780.0])
+            .with_min_inner_size([880.0, 640.0]),
         ..Default::default()
     };
 
@@ -52,10 +55,16 @@ struct SquawkApp {
     audio_tap: Arc<AudioTap>,
 
     keyboard_midi_enabled: bool,
+    /// Handpan rows choose center, between, and shoulder instead of loudness.
+    keyboard_rows_set_place: bool,
     keyboard_octave_shift: i8,
     keyboard_velocity: u8,
     keyboard_key_to_note: HashMap<egui::Key, u8>,
     keyboard_order: Vec<egui::Key>,
+    /// The quote key has no egui name. This drops the second text event from one press.
+    quote_key_at: Option<Instant>,
+    /// The module open in the inspector. Not saved.
+    open_module: DeskModule,
 
     analysis_enabled: bool,
     analysis_window_ms: f32,
@@ -84,6 +93,7 @@ impl SquawkApp {
         audio_tap: Arc<AudioTap>,
     ) -> Self {
         audio_tap.set_enabled(false);
+        let keyboard_rows_set_place = settings.snapshot().keyboard_rows_set_place;
 
         Self {
             control,
@@ -92,10 +102,13 @@ impl SquawkApp {
             audio_tap,
 
             keyboard_midi_enabled: true,
+            keyboard_rows_set_place,
             keyboard_octave_shift: 0,
             keyboard_velocity: 100,
             keyboard_key_to_note: HashMap::new(),
             keyboard_order: Vec::new(),
+            quote_key_at: None,
+            open_module: DeskModule::Handpan,
 
             analysis_enabled: false,
             analysis_window_ms: 30.0,
@@ -135,6 +148,31 @@ impl SquawkApp {
                                 .load(std::sync::atomic::Ordering::Relaxed),
                         );
                     }
+                    egui::Event::Text(text)
+                        if Instrument::from_u8(self.control.instrument())
+                            == Instrument::Handpan
+                            && (text == "'" || text == "\"") =>
+                    {
+                        let now = Instant::now();
+                        if self
+                            .quote_key_at
+                            .is_some_and(|at| now.duration_since(at) < Duration::from_millis(40))
+                        {
+                            continue;
+                        }
+                        self.quote_key_at = Some(now);
+                        let notes = handpan_notes(
+                            self.control.handpan_scale(),
+                            self.control.handpan_ding(),
+                        );
+                        let note = notes[HANDPAN_SOFT_KEYS.len() - 1];
+                        let (velocity, place) = if self.keyboard_rows_set_place {
+                            (self.keyboard_velocity, 0.5)
+                        } else {
+                            (scaled_velocity(self.keyboard_velocity, 0.55), 0.0)
+                        };
+                        crate::note_on(&self.control, note, velocity, place);
+                    }
                     egui::Event::Key {
                         key,
                         pressed,
@@ -145,28 +183,51 @@ impl SquawkApp {
                             continue;
                         }
 
-                        match (key, pressed) {
-                            (egui::Key::ArrowUp, true) => {
-                                self.keyboard_octave_shift =
-                                    (self.keyboard_octave_shift + 1).clamp(-4, 4);
+                        let handpan_keys =
+                            Instrument::from_u8(self.control.instrument()) == Instrument::Handpan;
+
+                        match (key, pressed, handpan_keys) {
+                            (egui::Key::ArrowUp, true, false) => {
+                                self.shift_octave(1);
                                 continue;
                             }
-                            (egui::Key::ArrowDown, true) => {
-                                self.keyboard_octave_shift =
-                                    (self.keyboard_octave_shift - 1).clamp(-4, 4);
+                            (egui::Key::ArrowDown, true, false) => {
+                                self.shift_octave(-1);
                                 continue;
                             }
-                            (egui::Key::ArrowRight, true) => {
-                                self.keyboard_velocity =
-                                    (self.keyboard_velocity.saturating_add(5)).clamp(1, 127);
+                            (egui::Key::ArrowRight, true, _) => {
+                                self.shift_velocity(5);
                                 continue;
                             }
-                            (egui::Key::ArrowLeft, true) => {
-                                self.keyboard_velocity =
-                                    (self.keyboard_velocity.saturating_sub(5)).clamp(1, 127);
+                            (egui::Key::ArrowLeft, true, _) => {
+                                self.shift_velocity(-5);
                                 continue;
                             }
                             _ => {}
+                        }
+
+                        if handpan_keys {
+                            let notes = handpan_notes(
+                                self.control.handpan_scale(),
+                                self.control.handpan_ding(),
+                            );
+                            if let Some((note, strength)) = handpan_key(*key, &notes) {
+                                let (velocity, place) = if self.keyboard_rows_set_place {
+                                    (self.keyboard_velocity, handpan_place(*key))
+                                } else {
+                                    (scaled_velocity(self.keyboard_velocity, strength), 0.0)
+                                };
+                                if *pressed {
+                                    if self.keyboard_key_to_note.contains_key(key) {
+                                        continue;
+                                    }
+                                    self.keyboard_key_to_note.insert(*key, note);
+                                    crate::note_on(&self.control, note, velocity, place);
+                                } else if self.keyboard_key_to_note.remove(key).is_some() {
+                                    crate::note_off(&self.control, note);
+                                }
+                            }
+                            continue;
                         }
 
                         if let Some(note) =
@@ -180,7 +241,7 @@ impl SquawkApp {
                                 self.keyboard_key_to_note.insert(*key, note);
                                 self.keyboard_order.retain(|k| k != key);
                                 self.keyboard_order.push(*key);
-                                crate::note_on(&self.control, note, self.keyboard_velocity);
+                                crate::note_on(&self.control, note, self.keyboard_velocity, 0.0);
                             } else if let Some(released_note) =
                                 self.keyboard_key_to_note.remove(key)
                             {
@@ -195,6 +256,7 @@ impl SquawkApp {
                                         &self.control,
                                         *last_note,
                                         self.keyboard_velocity,
+                                        0.0,
                                     );
                                 }
                             }
@@ -206,11 +268,469 @@ impl SquawkApp {
         });
     }
 
-    fn draw_parameter(&self, ui: &mut egui::Ui, param: ParameterId, enabled: bool) {
+    fn shift_octave(&mut self, delta: i8) {
+        self.keyboard_octave_shift = (self.keyboard_octave_shift + delta).clamp(-4, 4);
+    }
+
+    fn shift_velocity(&mut self, delta: i16) {
+        let next = self.keyboard_velocity as i16 + delta;
+        self.keyboard_velocity = next.clamp(1, 127) as u8;
+    }
+
+    fn draw_ding_wash(&self, ui: &mut egui::Ui) {
+        ui.label("Wash");
+        let mut wash = self.control.ding_wash();
+        let previous = wash;
+        let selected = match wash {
+            0 => "Resonator",
+            2 => "Tambura",
+            _ => "Waveshape",
+        };
+        egui::ComboBox::from_id_source("ding_wash")
+            .selected_text(selected)
+            .show_ui(ui, |combo| {
+                combo.selectable_value(&mut wash, 0, "Resonator");
+                combo.selectable_value(&mut wash, 1, "Waveshape");
+                combo.selectable_value(&mut wash, 2, "Tambura");
+            });
+        if wash != previous {
+            self.control.set_ding_wash(wash);
+            if let Err(err) = self.settings.update_ding_wash(wash) {
+                eprintln!("Warning: Failed to persist Ding wash: {err}");
+            }
+        }
+        let params = if wash == 2 {
+            ParameterId::tambura()
+        } else {
+            ParameterId::ding_wash()
+        };
+        for &param in params {
+            self.draw_parameter(ui, param, true);
+            ui.add_space(8.0);
+        }
+        ui.label("Formant");
+        for param in [ParameterId::FormantRate, ParameterId::FormantDepth] {
+            self.draw_parameter(ui, param, true);
+            ui.add_space(8.0);
+        }
+        for &param in ParameterId::formant() {
+            self.draw_parameter(ui, param, true);
+            ui.add_space(8.0);
+        }
+    }
+
+    fn reconcile_module(&mut self) {
+        let handpan = Instrument::from_u8(self.control.instrument()) == Instrument::Handpan;
+        if handpan && self.open_module == DeskModule::Modal {
+            self.open_module = DeskModule::Handpan;
+        } else if !handpan && self.open_module != DeskModule::Modal {
+            self.open_module = DeskModule::Modal;
+        }
+    }
+
+    fn strips(&self) -> &'static [DeskModule] {
+        if Instrument::from_u8(self.control.instrument()) == Instrument::Handpan {
+            &HANDPAN_STRIPS
+        } else {
+            &MODAL_STRIPS
+        }
+    }
+
+    fn draw_input_bar(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|row| {
+            row.label("Instrument");
+            let mut instrument = self.control.instrument();
+            let selected = match Instrument::from_u8(instrument) {
+                Instrument::Handpan => "Handpan",
+                Instrument::Modal => "Modal",
+            };
+            egui::ComboBox::from_id_source("instrument")
+                .selected_text(selected)
+                .show_ui(row, |combo: &mut egui::Ui| {
+                    combo.selectable_value(&mut instrument, Instrument::Modal.as_u8(), "Modal");
+                    combo.selectable_value(&mut instrument, Instrument::Handpan.as_u8(), "Handpan");
+                });
+            if instrument != self.control.instrument() {
+                self.control.set_instrument_u8(instrument);
+                self.open_module = if Instrument::from_u8(instrument) == Instrument::Handpan {
+                    DeskModule::Handpan
+                } else {
+                    DeskModule::Modal
+                };
+                if let Err(err) = self.settings.update_instrument(instrument) {
+                    eprintln!("Warning: Failed to persist instrument update: {err}");
+                }
+            }
+
+            row.checkbox(&mut self.keyboard_midi_enabled, "Keyboard");
+            row.label("Velocity");
+            row.push_id("velocity_down", |row| {
+                if row.button("-").clicked() {
+                    self.shift_velocity(-5);
+                }
+            });
+            row.label(format!("{}", self.keyboard_velocity));
+            row.push_id("velocity_up", |row| {
+                if row.button("+").clicked() {
+                    self.shift_velocity(5);
+                }
+            });
+            if Instrument::from_u8(self.control.instrument()) != Instrument::Handpan {
+                row.add_space(12.0);
+                row.label("Octave");
+                row.push_id("octave_down", |row| {
+                    if row.button("-").clicked() {
+                        self.shift_octave(-1);
+                    }
+                });
+                row.label(format!("{}", self.keyboard_octave_shift));
+                row.push_id("octave_up", |row| {
+                    if row.button("+").clicked() {
+                        self.shift_octave(1);
+                    }
+                });
+            }
+            row.add_space(12.0);
+            if row.button("Reset to defaults").clicked() {
+                self.control.reset_parameters();
+                self.keyboard_rows_set_place = false;
+                if let Err(err) = self.settings.reset_parameters() {
+                    eprintln!("Warning: Failed to persist parameter reset: {err}");
+                }
+            }
+        });
+
+        if Instrument::from_u8(self.control.instrument()) == Instrument::Handpan {
+            let notes = handpan_notes(self.control.handpan_scale(), self.control.handpan_ding());
+            let mut place = self.keyboard_rows_set_place;
+            if ui
+                .checkbox(&mut place, "Rows set where the strike lands")
+                .changed()
+            {
+                self.keyboard_rows_set_place = place;
+                if let Err(err) = self.settings.update_keyboard_rows_set_place(place) {
+                    eprintln!("Warning: Failed to persist strike-place setting: {err}");
+                }
+            }
+            ui.label(format!(
+                "One column, one pad: {}. Octave is not used.",
+                note_list(&notes)
+            ));
+            if self.keyboard_rows_set_place {
+                ui.label("Z X C V B N M , . /     center");
+                ui.label("S D F G H J K L ; '     between");
+                ui.label("E R T Y U I O P [ ]     shoulder");
+            } else {
+                ui.label("Z X C V B N M , . /     loud");
+                ui.label("S D F G H J K L ; '     softer");
+                ui.label("E R T Y U I O P [ ]     softest");
+            }
+        } else {
+            ui.label(
+                "Notes: A W S E D F T G Y H U J K, then O L P ; for the upper notes. Up/down arrows change octave, left/right change velocity.",
+            );
+        }
+    }
+
+    fn draw_desk(&mut self, ui: &mut egui::Ui, fader_h: f32) {
+        let strips = self.strips();
+        let count = strips.len() as f32;
+        let gap = 8.0;
+        let width = ((ui.available_width() - gap * (count - 1.0)) / count).clamp(88.0, 124.0);
+        egui::Grid::new("desk_strips")
+            .num_columns(strips.len())
+            .spacing(egui::vec2(gap, 6.0))
+            .min_col_width(width)
+            .show(ui, |ui| {
+                for &module in strips {
+                    self.draw_strip_name(ui, module, width);
+                }
+                ui.end_row();
+                for &module in strips {
+                    self.draw_strip_pan(ui, module, width);
+                }
+                ui.end_row();
+                for &module in strips {
+                    self.draw_strip_fader(ui, module, width, fader_h);
+                }
+                ui.end_row();
+                for &module in strips {
+                    self.draw_strip_mute(ui, module, width);
+                }
+                ui.end_row();
+                for &module in strips {
+                    self.draw_strip_send(ui, module, width);
+                }
+                ui.end_row();
+            });
+        if Instrument::from_u8(self.control.instrument()) == Instrument::Handpan {
+            ui.label(
+                egui::RichText::new(
+                    "Handpan, Ding, Recent, Second, Bass, and Echo: 1 is today's level.",
+                )
+                .weak(),
+            );
+        }
+    }
+
+    fn draw_strip_name(&mut self, ui: &mut egui::Ui, module: DeskModule, width: f32) {
+        ui.vertical(|ui| {
+            ui.set_min_width(width);
+            let selected = self.open_module == module;
+            if ui
+                .add_sized(
+                    [width, 22.0],
+                    egui::SelectableLabel::new(selected, module.name()),
+                )
+                .clicked()
+            {
+                self.open_module = module;
+            }
+        });
+    }
+
+    fn draw_strip_pan(&self, ui: &mut egui::Ui, module: DeskModule, width: f32) {
+        ui.vertical(|ui| {
+            ui.set_min_width(width);
+            if let Some(param) = module.pan() {
+                ui.label("Pan");
+                self.add_strip_slider(ui, param, false);
+                self.draw_strip_meta(ui, param);
+            }
+        });
+    }
+
+    fn draw_strip_fader(&self, ui: &mut egui::Ui, module: DeskModule, width: f32, fader_h: f32) {
+        ui.vertical(|ui| {
+            ui.set_min_width(width);
+            if let Some(param) = module.fader() {
+                ui.label("Level");
+                ui.vertical_centered(|ui| {
+                    ui.spacing_mut().slider_width = fader_h;
+                    self.add_strip_slider(ui, param, true);
+                });
+                self.draw_strip_meta(ui, param);
+            }
+        });
+    }
+
+    fn draw_strip_mute(&self, ui: &mut egui::Ui, module: DeskModule, width: f32) {
+        ui.vertical(|ui| {
+            ui.set_min_width(width);
+            ui.spacing_mut().item_spacing.y = 2.0;
+            if let Some(part) = module.part() {
+                let muted = self.control.support_muted();
+                let solo = self.control.support_solo();
+                if ui
+                    .selectable_label((muted & (1 << part)) != 0, "Mute")
+                    .clicked()
+                {
+                    self.persist_parts(set_part_bit(muted, part, (muted & (1 << part)) == 0), solo);
+                }
+                if ui
+                    .selectable_label((solo & (1 << part)) != 0, "Solo")
+                    .clicked()
+                {
+                    let muted = self.control.support_muted();
+                    self.persist_parts(muted, set_part_bit(solo, part, (solo & (1 << part)) == 0));
+                }
+            }
+        });
+    }
+
+    fn draw_strip_send(&self, ui: &mut egui::Ui, module: DeskModule, width: f32) {
+        ui.vertical(|ui| {
+            ui.set_min_width(width);
+            if let Some(param) = module.send() {
+                ui.label("Send");
+                self.add_strip_slider(ui, param, false);
+                self.draw_strip_meta(ui, param);
+            }
+        });
+    }
+
+    fn persist_parts(&self, muted: u8, solo: u8) {
+        self.control.set_support_parts(muted, solo);
+        if let Err(err) = self
+            .settings
+            .update_support_parts(support_part_flags(muted), support_part_flags(solo))
+        {
+            eprintln!("Warning: Failed to persist accompaniment mute and solo: {err}");
+        }
+    }
+
+    fn add_strip_slider(&self, ui: &mut egui::Ui, param: ParameterId, vertical: bool) {
+        if !vertical {
+            ui.spacing_mut().slider_width = ui.available_width();
+        }
         let mut value = self.control.parameter_value(param);
-        let mut slider = egui::Slider::new(&mut value, param.slider_range()).text(param.label());
+        let mut slider = egui::Slider::new(&mut value, param.slider_range()).show_value(false);
+        if vertical {
+            slider = slider.vertical();
+        }
         if param.logarithmic() {
             slider = slider.logarithmic(true);
+        }
+        if param == ParameterId::DingStrings {
+            slider = slider.integer();
+        }
+        let response = ui.add(slider).on_hover_text(param.label());
+        if response.changed() {
+            let clamped = param.clamp(value);
+            self.control.set_parameter_value(param, clamped);
+            if let Err(err) = self.settings.update_parameter(param, clamped) {
+                eprintln!("Warning: Failed to persist parameter update: {err}");
+            }
+        }
+    }
+
+    fn draw_strip_meta(&self, ui: &mut egui::Ui, param: ParameterId) {
+        let value = self.control.parameter_value(param);
+        ui.label(param.format_value(value));
+        let pending = self.midi_learn.pending();
+        let listening = pending == Some(param);
+        let other_pending = pending.is_some() && !listening;
+        let label = if listening {
+            "Stop".to_string()
+        } else if let Some(cc) = self.midi_learn.mapping_for(param) {
+            format!("CC {cc}")
+        } else {
+            "Learn".to_string()
+        };
+        if ui
+            .add_enabled(!other_pending, egui::Button::new(label).small())
+            .clicked()
+        {
+            self.toggle_learn(param);
+        }
+    }
+
+    fn draw_inspector(&self, ui: &mut egui::Ui) {
+        ui.heading(self.open_module.name());
+        match self.open_module {
+            DeskModule::Handpan => {
+                draw_handpan_layout(ui, &self.control, &self.settings);
+                ui.add_space(6.0);
+                for &param in ParameterId::handpan() {
+                    self.draw_parameter(ui, param, true);
+                    ui.add_space(8.0);
+                }
+            }
+            DeskModule::Support => {
+                ui.label(
+                    "Pulse and Fade move Ding, Recent, Second, and Bass. Width, Wander, Drift, and Motion move the resonator bands.",
+                );
+                ui.add_space(6.0);
+                for &param in ParameterId::accompaniment() {
+                    if param == ParameterId::EchoFeedback {
+                        continue;
+                    }
+                    self.draw_parameter(ui, param, true);
+                    ui.add_space(8.0);
+                }
+            }
+            DeskModule::Ding => self.draw_ding_wash(ui),
+            DeskModule::Recent => {
+                ui.label(
+                    "Follows the degree you have been playing most. Its motion lives on Support.",
+                );
+            }
+            DeskModule::Second => {
+                ui.label("Follows the next most played degree. Its motion lives on Support.");
+            }
+            DeskModule::Bass => {
+                ui.label("Follows the degree the beat agrees on. Its motion lives on Support.");
+            }
+            DeskModule::Echo => {
+                ui.label("Delayed hits play the Handpan, so they follow its fader, pan, and send.");
+                ui.add_space(6.0);
+                self.draw_parameter(ui, ParameterId::EchoFeedback, true);
+            }
+            DeskModule::Reverb => {
+                for &param in ParameterId::reverb() {
+                    if matches!(
+                        param,
+                        ParameterId::ReverbHandpan | ParameterId::ReverbSupport
+                    ) {
+                        continue;
+                    }
+                    self.draw_parameter(ui, param, true);
+                    ui.add_space(8.0);
+                }
+            }
+            DeskModule::Modal => self.draw_modal(ui),
+        }
+    }
+
+    fn draw_modal(&self, ui: &mut egui::Ui) {
+        ui.horizontal(|row| {
+            row.label("Exciter");
+            let mut mode_u8 = self.control.exciter_mode();
+            let selected = match ExciterMode::from_u8(mode_u8) {
+                ExciterMode::Strike => "Strike",
+                ExciterMode::Breath => "Breath",
+            };
+            egui::ComboBox::from_id_source("exciter_mode")
+                .selected_text(selected)
+                .show_ui(row, |combo: &mut egui::Ui| {
+                    combo.selectable_value(&mut mode_u8, ExciterMode::Strike.as_u8(), "Strike");
+                    combo.selectable_value(&mut mode_u8, ExciterMode::Breath.as_u8(), "Breath");
+                });
+            if mode_u8 != self.control.exciter_mode() {
+                self.control.set_exciter_mode_u8(mode_u8);
+                if let Err(err) = self.settings.update_exciter_mode(mode_u8) {
+                    eprintln!("Warning: Failed to persist exciter mode update: {err}");
+                }
+            }
+            row.label(match ExciterMode::from_u8(mode_u8) {
+                ExciterMode::Breath => "(continuous)",
+                ExciterMode::Strike => "(pulse)",
+            });
+        });
+
+        let breath_mode = ExciterMode::from_u8(self.control.exciter_mode()) == ExciterMode::Breath;
+        for &param in ParameterId::modal() {
+            if param == ParameterId::OutputGain {
+                continue;
+            }
+            if param == ParameterId::BreathPressure {
+                ui.separator();
+                ui.label("Breath controls (active in Breath mode)");
+            }
+            let enabled = match param {
+                ParameterId::BreathPressure
+                | ParameterId::BreathNoiseCutoffHz
+                | ParameterId::BreathFeedback
+                | ParameterId::BreathAutoLevel => breath_mode,
+                _ => true,
+            };
+            self.draw_parameter(ui, param, enabled);
+            ui.add_space(8.0);
+        }
+    }
+
+    fn draw_parameter(&self, ui: &mut egui::Ui, param: ParameterId, enabled: bool) {
+        self.add_parameter_slider(ui, param, enabled, true);
+        self.draw_parameter_assignment(ui, param, enabled);
+    }
+
+    fn add_parameter_slider(
+        &self,
+        ui: &mut egui::Ui,
+        param: ParameterId,
+        enabled: bool,
+        show_label: bool,
+    ) {
+        let mut value = self.control.parameter_value(param);
+        let mut slider = egui::Slider::new(&mut value, param.slider_range());
+        if show_label {
+            slider = slider.text(param.label());
+        }
+        if param.logarithmic() {
+            slider = slider.logarithmic(true);
+        }
+        if param == ParameterId::DingStrings {
+            slider = slider.integer();
         }
         if ui.add_enabled(enabled, slider).changed() {
             let clamped = param.clamp(value);
@@ -219,7 +739,10 @@ impl SquawkApp {
                 eprintln!("Warning: Failed to persist parameter update: {err}");
             }
         }
+    }
 
+    fn draw_parameter_assignment(&self, ui: &mut egui::Ui, param: ParameterId, enabled: bool) {
+        let value = self.control.parameter_value(param);
         ui.horizontal(|row| {
             row.label(param.format_value(value));
             let pending = self.midi_learn.pending();
@@ -234,18 +757,7 @@ impl SquawkApp {
                 .add_enabled(enabled && !other_pending, egui::Button::new(button_label))
                 .clicked()
             {
-                if listening {
-                    let _ = self.midi_learn.take_pending();
-                } else {
-                    let removed = self.midi_learn.clear_mapping(param);
-                    if removed && let Err(err) = self.settings.remove_mapping(param) {
-                        eprintln!(
-                            "Warning: Failed to persist MIDI unlearn for {}: {err}",
-                            param.label()
-                        );
-                    }
-                    self.midi_learn.request(param);
-                }
+                self.toggle_learn(param);
             }
 
             match self.midi_learn.mapping_for(param) {
@@ -253,6 +765,21 @@ impl SquawkApp {
                 None => row.label("Unassigned"),
             };
         });
+    }
+
+    fn toggle_learn(&self, param: ParameterId) {
+        if self.midi_learn.pending() == Some(param) {
+            let _ = self.midi_learn.take_pending();
+            return;
+        }
+        let removed = self.midi_learn.clear_mapping(param);
+        if removed && let Err(err) = self.settings.remove_mapping(param) {
+            eprintln!(
+                "Warning: Failed to persist MIDI unlearn for {}: {err}",
+                param.label()
+            );
+        }
+        self.midi_learn.request(param);
     }
 
     fn draw_peak_meter(&self, ui: &mut egui::Ui) {
@@ -275,6 +802,8 @@ impl SquawkApp {
         );
     }
 
+    /// Pitch debug view. It stays off the desk.
+    #[allow(dead_code)]
     fn draw_analysis(&mut self, ui: &mut egui::Ui) {
         ui.separator();
         ui.label("Analysis (debug)");
@@ -587,118 +1116,142 @@ fn format_cents_tick(
 impl eframe::App for SquawkApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint_after(Duration::from_millis(16));
-
         self.handle_computer_keyboard(ctx);
+        self.reconcile_module();
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("squawk mass-spring");
-            ui.label("Shape envelopes and resonator couplings or map them to MIDI CCs.");
+            ui.heading("squawk");
+            self.draw_input_bar(ui);
+            ui.add_space(4.0);
+            self.draw_peak_meter(ui);
+            if let Some(param) = self.midi_learn.pending() {
+                ui.colored_label(
+                    egui::Color32::LIGHT_GREEN,
+                    format!("Listening for CC assignment for {}", param.label()),
+                );
+            }
             ui.separator();
-
-            ui.columns(2, |cols| {
-                // Left column: performance + parameters
-                cols[0].vertical(|ui| {
-                    ui.horizontal(|row| {
-                        row.checkbox(
-                            &mut self.keyboard_midi_enabled,
-                            "Computer keyboard → MIDI notes",
-                        );
-                        row.label(format!(
-                            "octave {}  vel {}",
-                            self.keyboard_octave_shift, self.keyboard_velocity
-                        ));
-                    });
-                    ui.label(
-                        "Keys: A W S E D F T G Y H U J K (then O L P ; for upper notes)   (↑/↓ octave, ←/→ velocity)",
-                    );
-                    ui.add_space(6.0);
-
-                    ui.horizontal(|row| {
-                        row.label("Exciter");
-                        let mut mode_u8 = self.control.exciter_mode();
-                        let mode = ExciterMode::from_u8(mode_u8);
-                        let selected = match mode {
-                            ExciterMode::Strike => "Strike",
-                            ExciterMode::Breath => "Breath",
-                        };
-
-                        egui::ComboBox::from_id_source("exciter_mode")
-                            .selected_text(selected)
-                            .show_ui(row, |combo: &mut egui::Ui| {
-                                combo.selectable_value(
-                                    &mut mode_u8,
-                                    ExciterMode::Strike.as_u8(),
-                                    "Strike",
-                                );
-                                combo.selectable_value(
-                                    &mut mode_u8,
-                                    ExciterMode::Breath.as_u8(),
-                                    "Breath",
-                                );
-                            });
-
-                        if mode_u8 != self.control.exciter_mode() {
-                            self.control.set_exciter_mode_u8(mode_u8);
-                            if let Err(err) = self.settings.update_exciter_mode(mode_u8) {
-                                eprintln!("Warning: Failed to persist exciter mode update: {err}");
-                            }
-                        }
-
-                        row.label(match ExciterMode::from_u8(mode_u8) {
-                            ExciterMode::Breath => "(continuous)",
-                            ExciterMode::Strike => "(pulse)",
-                        });
-                    });
-
-                    if ui.button("Reset parameters").clicked() {
-                        self.control.reset_parameters();
-                        if let Err(err) = self.settings.reset_parameters() {
-                            eprintln!("Warning: Failed to persist parameter reset: {err}");
-                        }
-                    }
-
-                    ui.separator();
-
-                    egui::ScrollArea::vertical()
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            let breath_mode = ExciterMode::from_u8(self.control.exciter_mode())
-                                == ExciterMode::Breath;
-                            for &param in ParameterId::all() {
-                                if param == ParameterId::BreathPressure {
-                                    ui.separator();
-                                    ui.label("Breath controls (active in Breath mode)");
-                                }
-                                let enabled = match param {
-                                    ParameterId::BreathPressure
-                                    | ParameterId::BreathNoiseCutoffHz
-                                    | ParameterId::BreathFeedback
-                                    | ParameterId::BreathAutoLevel => breath_mode,
-                                    _ => true,
-                                };
-
-                                self.draw_parameter(ui, param, enabled);
-                                ui.add_space(8.0);
-                            }
-                        });
+            let available = ui.available_height();
+            let inspector_h = (available * 0.40).clamp(100.0, 360.0);
+            let mixer_h = (available - inspector_h).max(0.0);
+            let fader_h = (mixer_h - 250.0).clamp(56.0, 120.0);
+            egui::ScrollArea::vertical()
+                .id_source("desk")
+                .auto_shrink([false, false])
+                .max_height(mixer_h)
+                .show(ui, |ui| {
+                    self.draw_desk(ui, fader_h);
                 });
-
-                // Right column: meters + analysis
-                cols[1].vertical(|ui| {
-                    self.draw_peak_meter(ui);
-                    self.draw_analysis(ui);
-
-                    if let Some(param) = self.midi_learn.pending() {
-                        ui.separator();
-                        ui.colored_label(
-                            egui::Color32::LIGHT_GREEN,
-                            format!("Listening for CC assignment for {}", param.label()),
-                        );
-                    }
+            ui.separator();
+            let inspector_h = ui.available_height();
+            egui::ScrollArea::vertical()
+                .id_source("inspector")
+                .auto_shrink([false, false])
+                .max_height(inspector_h)
+                .show(ui, |ui| {
+                    self.draw_inspector(ui);
                 });
-            });
         });
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DeskModule {
+    Handpan,
+    Support,
+    Ding,
+    Recent,
+    Second,
+    Bass,
+    Echo,
+    Reverb,
+    Modal,
+}
+
+const HANDPAN_STRIPS: [DeskModule; 8] = [
+    DeskModule::Handpan,
+    DeskModule::Support,
+    DeskModule::Ding,
+    DeskModule::Recent,
+    DeskModule::Second,
+    DeskModule::Bass,
+    DeskModule::Echo,
+    DeskModule::Reverb,
+];
+
+const MODAL_STRIPS: [DeskModule; 1] = [DeskModule::Modal];
+
+impl DeskModule {
+    fn name(self) -> &'static str {
+        match self {
+            DeskModule::Handpan => "Handpan",
+            DeskModule::Support => "Support",
+            DeskModule::Ding => "Ding",
+            DeskModule::Recent => "Recent",
+            DeskModule::Second => "Second",
+            DeskModule::Bass => "Bass",
+            DeskModule::Echo => "Echo",
+            DeskModule::Reverb => "Reverb",
+            DeskModule::Modal => "Modal",
+        }
+    }
+
+    fn fader(self) -> Option<ParameterId> {
+        match self {
+            DeskModule::Handpan => Some(ParameterId::MixHandpan),
+            DeskModule::Support => Some(ParameterId::SupportLevel),
+            DeskModule::Ding => Some(ParameterId::MixDing),
+            DeskModule::Recent => Some(ParameterId::MixRecent),
+            DeskModule::Second => Some(ParameterId::MixSecond),
+            DeskModule::Bass => Some(ParameterId::MixBass),
+            DeskModule::Echo => Some(ParameterId::MixTaps),
+            DeskModule::Modal => Some(ParameterId::OutputGain),
+            DeskModule::Reverb => None,
+        }
+    }
+
+    fn pan(self) -> Option<ParameterId> {
+        match self {
+            DeskModule::Handpan => Some(ParameterId::PanHandpan),
+            DeskModule::Ding => Some(ParameterId::PanDing),
+            DeskModule::Recent => Some(ParameterId::PanRecent),
+            DeskModule::Second => Some(ParameterId::PanSecond),
+            DeskModule::Bass => Some(ParameterId::PanBass),
+            DeskModule::Support | DeskModule::Echo | DeskModule::Reverb | DeskModule::Modal => None,
+        }
+    }
+
+    fn send(self) -> Option<ParameterId> {
+        match self {
+            DeskModule::Handpan => Some(ParameterId::ReverbHandpan),
+            DeskModule::Support => Some(ParameterId::ReverbSupport),
+            DeskModule::Ding
+            | DeskModule::Recent
+            | DeskModule::Second
+            | DeskModule::Bass
+            | DeskModule::Echo
+            | DeskModule::Reverb
+            | DeskModule::Modal => None,
+        }
+    }
+
+    fn part(self) -> Option<usize> {
+        match self {
+            DeskModule::Ding => Some(0),
+            DeskModule::Recent => Some(1),
+            DeskModule::Second => Some(2),
+            DeskModule::Bass => Some(3),
+            DeskModule::Echo => Some(4),
+            DeskModule::Handpan | DeskModule::Support | DeskModule::Reverb | DeskModule::Modal => {
+                None
+            }
+        }
+    }
+}
+
+fn set_part_bit(mask: u8, index: usize, on: bool) -> u8 {
+    let bit = 1u8 << index;
+    if on { mask | bit } else { mask & !bit }
 }
 
 fn cents_error(measured_hz: f32, target_hz: f32) -> f32 {
@@ -710,6 +1263,146 @@ fn cents_error(measured_hz: f32, target_hz: f32) -> f32 {
     }
     let ratio = measured_hz / target_hz;
     1200.0 * (ratio.ln() / core::f32::consts::LN_2)
+}
+
+const HANDPAN_LOUD_KEYS: [egui::Key; 10] = [
+    egui::Key::Z,
+    egui::Key::X,
+    egui::Key::C,
+    egui::Key::V,
+    egui::Key::B,
+    egui::Key::N,
+    egui::Key::M,
+    egui::Key::Comma,
+    egui::Key::Period,
+    egui::Key::Slash,
+];
+const HANDPAN_SOFT_KEYS: [egui::Key; 10] = [
+    egui::Key::S,
+    egui::Key::D,
+    egui::Key::F,
+    egui::Key::G,
+    egui::Key::H,
+    egui::Key::J,
+    egui::Key::K,
+    egui::Key::L,
+    egui::Key::Semicolon,
+    egui::Key::Backslash,
+];
+const HANDPAN_SOFTEST_KEYS: [egui::Key; 10] = [
+    egui::Key::E,
+    egui::Key::R,
+    egui::Key::T,
+    egui::Key::Y,
+    egui::Key::U,
+    egui::Key::I,
+    egui::Key::O,
+    egui::Key::P,
+    egui::Key::OpenBracket,
+    egui::Key::CloseBracket,
+];
+
+/// `(midi note, strength)` where strength is 1, 0.55, or 0.30 of the velocity setting.
+fn handpan_key(key: egui::Key, notes: &[u8]) -> Option<(u8, f32)> {
+    for (index, candidate) in HANDPAN_LOUD_KEYS.iter().enumerate() {
+        if key == *candidate {
+            return Some((notes[index], 1.0));
+        }
+    }
+    for (index, candidate) in HANDPAN_SOFT_KEYS.iter().enumerate() {
+        if key == *candidate {
+            return Some((notes[index], 0.55));
+        }
+    }
+    for (index, candidate) in HANDPAN_SOFTEST_KEYS.iter().enumerate() {
+        if key == *candidate {
+            return Some((notes[index], 0.30));
+        }
+    }
+    None
+}
+
+fn note_name(note: u8) -> String {
+    let names = [
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+    ];
+    format!("{}{}", names[(note % 12) as usize], (note as i16 / 12) - 1)
+}
+
+fn draw_handpan_layout(
+    ui: &mut egui::Ui,
+    control: &crate::ControlBlock,
+    settings: &crate::SettingsStore,
+) {
+    let mut scale = control.handpan_scale();
+    let mut ding = control.handpan_ding();
+    let mut tuning = control.handpan_tuning();
+    let previous = (scale, ding, tuning);
+
+    ui.horizontal(|row| {
+        row.label("Scale");
+        egui::ComboBox::from_id_source("handpan_scale")
+            .selected_text(handpan_scale_name(scale))
+            .show_ui(row, |combo| {
+                for index in 0..HANDPAN_SCALE_COUNT {
+                    combo.selectable_value(&mut scale, index, handpan_scale_name(index));
+                }
+            });
+        row.label("Ding");
+        egui::ComboBox::from_id_source("handpan_ding")
+            .selected_text(note_name(ding))
+            .show_ui(row, |combo| {
+                for note in HANDPAN_DING_MIN..=HANDPAN_DING_MAX {
+                    combo.selectable_value(&mut ding, note, note_name(note));
+                }
+            });
+        row.label("Tuning");
+        egui::ComboBox::from_id_source("handpan_tuning")
+            .selected_text(if tuning == 0 { "Equal" } else { "Just" })
+            .show_ui(row, |combo| {
+                combo.selectable_value(&mut tuning, 0, "Equal");
+                combo.selectable_value(&mut tuning, 1, "Just");
+            });
+    });
+
+    if (scale, ding, tuning) != previous {
+        control.set_handpan_layout(scale, ding, tuning);
+        if let Err(err) = settings.update_handpan_layout(scale, ding, tuning) {
+            eprintln!("Warning: Failed to persist handpan layout: {err}");
+        }
+    }
+
+    let notes = handpan_notes(scale, ding);
+    ui.label(format!(
+        "{}  {}  ·  {}",
+        handpan_scale_name(scale),
+        note_list(&notes),
+        if tuning == 0 { "Equal" } else { "Just" }
+    ));
+}
+
+fn note_list(notes: &[u8]) -> String {
+    notes
+        .iter()
+        .copied()
+        .map(note_name)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// 0 at the center row, 0.5 between, 1 on the shoulder row.
+fn handpan_place(key: egui::Key) -> f32 {
+    if HANDPAN_LOUD_KEYS.contains(&key) {
+        0.0
+    } else if HANDPAN_SOFT_KEYS.contains(&key) {
+        0.5
+    } else {
+        1.0
+    }
+}
+
+fn scaled_velocity(master: u8, strength: f32) -> u8 {
+    ((master as f32) * strength).round().clamp(1.0, 127.0) as u8
 }
 
 fn computer_key_to_midi_note(key: egui::Key, octave_shift: i8) -> Option<u8> {
@@ -748,4 +1441,58 @@ fn midi_note_label(note: u8) -> String {
     let name = names[(note % 12) as usize];
     let octave = (note as i16 / 12) - 1;
     format!("{}{} ({})", name, octave, note)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn handpan_rows_share_pads_and_get_softer() {
+        let pads = handpan_notes(0, 50);
+        let loud = handpan_key(egui::Key::Z, &pads).unwrap();
+        let soft = handpan_key(egui::Key::S, &pads).unwrap();
+        let softest = handpan_key(egui::Key::E, &pads).unwrap();
+        assert_eq!(loud.0, 50);
+        assert_eq!(soft.0, loud.0);
+        assert_eq!(softest.0, loud.0);
+        assert!(loud.1 > soft.1 && soft.1 > softest.1);
+
+        let notes: Vec<u8> = HANDPAN_LOUD_KEYS
+            .into_iter()
+            .map(|key| handpan_key(key, &pads).unwrap().0)
+            .collect();
+        assert_eq!(notes, pads.to_vec());
+        let unique = {
+            let mut sorted = notes.clone();
+            sorted.sort_unstable();
+            sorted.dedup();
+            sorted.len()
+        };
+        assert_eq!(unique, 10);
+        assert_eq!(
+            handpan_key(egui::Key::Period, &pads).unwrap().0,
+            handpan_key(egui::Key::Semicolon, &pads).unwrap().0
+        );
+        assert!(
+            handpan_key(egui::Key::Slash, &pads).unwrap().0
+                > handpan_key(egui::Key::Comma, &pads).unwrap().0
+        );
+
+        assert_eq!(
+            handpan_key(egui::Key::Comma, &pads).unwrap().0,
+            handpan_key(egui::Key::L, &pads).unwrap().0
+        );
+        assert_eq!(
+            handpan_key(egui::Key::P, &pads).unwrap().0,
+            handpan_key(egui::Key::Comma, &pads).unwrap().0
+        );
+        assert!(handpan_key(egui::Key::A, &pads).is_none());
+        assert_eq!(scaled_velocity(100, 0.55), 55);
+        assert_eq!(scaled_velocity(100, 0.30), 30);
+        assert_eq!(handpan_place(egui::Key::Z), 0.0);
+        assert_eq!(handpan_place(egui::Key::S), 0.5);
+        assert_eq!(handpan_place(egui::Key::E), 1.0);
+        assert_eq!(handpan_place(egui::Key::P), 1.0);
+    }
 }
