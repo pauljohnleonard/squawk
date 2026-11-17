@@ -14,6 +14,48 @@ use crate::ParameterId;
 const SETTINGS_FILE_NAME: &str = "settings.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+struct StoredFmBassPreset {
+    #[serde(default = "default_fm_bass_decay")]
+    decay: f32,
+    #[serde(default = "default_fm_bass_ratio")]
+    ratio: f32,
+    #[serde(default = "default_fm_bass_index")]
+    index: f32,
+    #[serde(default = "default_fm_bass_index_decay")]
+    index_decay: f32,
+    #[serde(default = "default_fm_bass_feedback")]
+    feedback: f32,
+    #[serde(default = "default_fm_bass_level")]
+    level: f32,
+}
+
+impl StoredFmBassPreset {
+    fn from_params(params: squawk_engine::FmBassParams) -> Self {
+        let p = params.clamp();
+        Self {
+            decay: p.decay,
+            ratio: p.ratio,
+            index: p.index,
+            index_decay: p.index_decay,
+            feedback: p.feedback,
+            level: p.level,
+        }
+    }
+
+    fn into_params(self) -> squawk_engine::FmBassParams {
+        squawk_engine::FmBassParams {
+            decay: self.decay,
+            ratio: self.ratio,
+            index: self.index,
+            index_decay: self.index_decay,
+            feedback: self.feedback,
+            level: self.level,
+        }
+        .clamp()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct StoredSettings {
     #[serde(default = "default_exciter_mode")]
     exciter_mode: u8,
@@ -164,6 +206,20 @@ struct StoredSettings {
     groove_phase_pull: f32,
     #[serde(default = "default_groove_click_level")]
     groove_click_level: f32,
+    #[serde(default = "default_fm_bass_decay")]
+    fm_bass_decay: f32,
+    #[serde(default = "default_fm_bass_ratio")]
+    fm_bass_ratio: f32,
+    #[serde(default = "default_fm_bass_index")]
+    fm_bass_index: f32,
+    #[serde(default = "default_fm_bass_index_decay")]
+    fm_bass_index_decay: f32,
+    #[serde(default = "default_fm_bass_feedback")]
+    fm_bass_feedback: f32,
+    #[serde(default = "default_fm_bass_level")]
+    fm_bass_level: f32,
+    #[serde(default)]
+    fm_bass_presets: HashMap<String, StoredFmBassPreset>,
     #[serde(default = "default_groove_click_enabled")]
     groove_click_enabled: bool,
     #[serde(default = "default_groove_auto_lock")]
@@ -259,6 +315,13 @@ impl Default for StoredSettings {
             groove_sensitivity: crate::DEFAULT_GROOVE_SENSITIVITY,
             groove_phase_pull: crate::DEFAULT_GROOVE_PHASE_PULL,
             groove_click_level: crate::DEFAULT_GROOVE_CLICK_LEVEL,
+            fm_bass_decay: crate::DEFAULT_FM_BASS_DECAY,
+            fm_bass_ratio: crate::DEFAULT_FM_BASS_RATIO,
+            fm_bass_index: crate::DEFAULT_FM_BASS_INDEX,
+            fm_bass_index_decay: crate::DEFAULT_FM_BASS_INDEX_DECAY,
+            fm_bass_feedback: crate::DEFAULT_FM_BASS_FEEDBACK,
+            fm_bass_level: crate::DEFAULT_FM_BASS_LEVEL,
+            fm_bass_presets: HashMap::new(),
             groove_click_enabled: crate::DEFAULT_GROOVE_CLICK_ENABLED,
             groove_auto_lock: crate::DEFAULT_GROOVE_AUTO_LOCK,
             support_muted: default_support_part_flags(),
@@ -346,6 +409,12 @@ pub(crate) struct SettingsSnapshot {
     pub groove_sensitivity: f32,
     pub groove_phase_pull: f32,
     pub groove_click_level: f32,
+    pub fm_bass_decay: f32,
+    pub fm_bass_ratio: f32,
+    pub fm_bass_index: f32,
+    pub fm_bass_index_decay: f32,
+    pub fm_bass_feedback: f32,
+    pub fm_bass_level: f32,
     pub groove_click_enabled: bool,
     pub groove_auto_lock: bool,
     pub support_muted: u8,
@@ -380,7 +449,7 @@ impl From<StoredSettings> for SettingsSnapshot {
                 .clamp(value.breath_noise_cutoff_hz),
             breath_feedback: ParameterId::BreathFeedback.clamp(value.breath_feedback),
             breath_auto_level: ParameterId::BreathAutoLevel.clamp(value.breath_auto_level),
-            instrument: value.instrument.min(1),
+            instrument: crate::Instrument::from_u8(value.instrument).as_u8(),
             handpan_scale: value.handpan_scale.min(crate::HANDPAN_SCALE_COUNT - 1),
             handpan_ding: value
                 .handpan_ding
@@ -448,6 +517,12 @@ impl From<StoredSettings> for SettingsSnapshot {
             groove_sensitivity: ParameterId::GrooveSensitivity.clamp(value.groove_sensitivity),
             groove_phase_pull: ParameterId::GroovePhasePull.clamp(value.groove_phase_pull),
             groove_click_level: ParameterId::GrooveClickLevel.clamp(value.groove_click_level),
+            fm_bass_decay: ParameterId::FmBassDecay.clamp(value.fm_bass_decay),
+            fm_bass_ratio: ParameterId::FmBassRatio.clamp(value.fm_bass_ratio),
+            fm_bass_index: ParameterId::FmBassIndex.clamp(value.fm_bass_index),
+            fm_bass_index_decay: ParameterId::FmBassIndexDecay.clamp(value.fm_bass_index_decay),
+            fm_bass_feedback: ParameterId::FmBassFeedback.clamp(value.fm_bass_feedback),
+            fm_bass_level: ParameterId::FmBassLevel.clamp(value.fm_bass_level),
             groove_click_enabled: value.groove_click_enabled,
             groove_auto_lock: value.groove_auto_lock,
             support_muted: squawk_engine::support_part_mask(value.support_muted),
@@ -558,6 +633,12 @@ impl SettingsStore {
                 ParameterId::GrooveSensitivity => data.groove_sensitivity = clamped,
                 ParameterId::GroovePhasePull => data.groove_phase_pull = clamped,
                 ParameterId::GrooveClickLevel => data.groove_click_level = clamped,
+                ParameterId::FmBassDecay => data.fm_bass_decay = clamped,
+                ParameterId::FmBassRatio => data.fm_bass_ratio = clamped,
+                ParameterId::FmBassIndex => data.fm_bass_index = clamped,
+                ParameterId::FmBassIndexDecay => data.fm_bass_index_decay = clamped,
+                ParameterId::FmBassFeedback => data.fm_bass_feedback = clamped,
+                ParameterId::FmBassLevel => data.fm_bass_level = clamped,
             }
         }
         self.persist_current_state()
@@ -634,9 +715,57 @@ impl SettingsStore {
     pub(crate) fn update_instrument(&self, instrument: u8) -> Result<()> {
         {
             let mut data = self.state.lock();
-            data.instrument = instrument.min(1);
+            data.instrument = crate::Instrument::from_u8(instrument).as_u8();
         }
         self.persist_current_state()
+    }
+
+    pub(crate) fn update_fm_bass_params(&self, params: squawk_engine::FmBassParams) -> Result<()> {
+        let p = params.clamp();
+        {
+            let mut data = self.state.lock();
+            data.fm_bass_decay = ParameterId::FmBassDecay.clamp(p.decay);
+            data.fm_bass_ratio = ParameterId::FmBassRatio.clamp(p.ratio);
+            data.fm_bass_index = ParameterId::FmBassIndex.clamp(p.index);
+            data.fm_bass_index_decay = ParameterId::FmBassIndexDecay.clamp(p.index_decay);
+            data.fm_bass_feedback = ParameterId::FmBassFeedback.clamp(p.feedback);
+            data.fm_bass_level = ParameterId::FmBassLevel.clamp(p.level);
+        }
+        self.persist_current_state()
+    }
+
+    pub(crate) fn save_fm_bass_preset(
+        &self,
+        name: &str,
+        params: squawk_engine::FmBassParams,
+    ) -> Result<()> {
+        let name = name.trim();
+        anyhow::ensure!(!name.is_empty(), "Preset name is empty");
+        {
+            let mut data = self.state.lock();
+            data.fm_bass_presets
+                .insert(name.to_string(), StoredFmBassPreset::from_params(params));
+        }
+        self.persist_current_state()
+    }
+
+    pub(crate) fn delete_fm_bass_preset(&self, name: &str) -> Result<()> {
+        {
+            let mut data = self.state.lock();
+            data.fm_bass_presets.remove(name);
+        }
+        self.persist_current_state()
+    }
+
+    pub(crate) fn fm_bass_presets(&self) -> Vec<(String, squawk_engine::FmBassParams)> {
+        let data = self.state.lock();
+        let mut presets: Vec<_> = data
+            .fm_bass_presets
+            .iter()
+            .map(|(name, preset)| (name.clone(), preset.clone().into_params()))
+            .collect();
+        presets.sort_by(|a, b| a.0.cmp(&b.0));
+        presets
     }
 
     pub(crate) fn update_exciter_mode(&self, mode: u8) -> Result<()> {
@@ -740,6 +869,12 @@ impl SettingsStore {
             data.groove_sensitivity = crate::DEFAULT_GROOVE_SENSITIVITY;
             data.groove_phase_pull = crate::DEFAULT_GROOVE_PHASE_PULL;
             data.groove_click_level = crate::DEFAULT_GROOVE_CLICK_LEVEL;
+            data.fm_bass_decay = crate::DEFAULT_FM_BASS_DECAY;
+            data.fm_bass_ratio = crate::DEFAULT_FM_BASS_RATIO;
+            data.fm_bass_index = crate::DEFAULT_FM_BASS_INDEX;
+            data.fm_bass_index_decay = crate::DEFAULT_FM_BASS_INDEX_DECAY;
+            data.fm_bass_feedback = crate::DEFAULT_FM_BASS_FEEDBACK;
+            data.fm_bass_level = crate::DEFAULT_FM_BASS_LEVEL;
             data.groove_click_enabled = crate::DEFAULT_GROOVE_CLICK_ENABLED;
             data.groove_auto_lock = crate::DEFAULT_GROOVE_AUTO_LOCK;
             data.support_muted = default_support_part_flags();
@@ -1025,6 +1160,30 @@ fn default_groove_phase_pull() -> f32 {
 
 fn default_groove_click_level() -> f32 {
     crate::DEFAULT_GROOVE_CLICK_LEVEL
+}
+
+fn default_fm_bass_decay() -> f32 {
+    crate::DEFAULT_FM_BASS_DECAY
+}
+
+fn default_fm_bass_ratio() -> f32 {
+    crate::DEFAULT_FM_BASS_RATIO
+}
+
+fn default_fm_bass_index() -> f32 {
+    crate::DEFAULT_FM_BASS_INDEX
+}
+
+fn default_fm_bass_index_decay() -> f32 {
+    crate::DEFAULT_FM_BASS_INDEX_DECAY
+}
+
+fn default_fm_bass_feedback() -> f32 {
+    crate::DEFAULT_FM_BASS_FEEDBACK
+}
+
+fn default_fm_bass_level() -> f32 {
+    crate::DEFAULT_FM_BASS_LEVEL
 }
 
 fn default_groove_click_enabled() -> bool {

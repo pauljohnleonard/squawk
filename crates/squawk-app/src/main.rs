@@ -29,6 +29,11 @@ use squawk_engine::{
     DEFAULT_DING_STRINGS as ENGINE_DEFAULT_DING_STRINGS,
     DEFAULT_DING_WASH as ENGINE_DEFAULT_DING_WASH,
     DEFAULT_EXCITATION_GAIN as ENGINE_DEFAULT_EXCITATION_GAIN,
+    DEFAULT_FM_BASS_DECAY as ENGINE_DEFAULT_FM_BASS_DECAY,
+    DEFAULT_FM_BASS_FEEDBACK as ENGINE_DEFAULT_FM_BASS_FEEDBACK,
+    DEFAULT_FM_BASS_INDEX as ENGINE_DEFAULT_FM_BASS_INDEX,
+    DEFAULT_FM_BASS_INDEX_DECAY as ENGINE_DEFAULT_FM_BASS_INDEX_DECAY,
+    DEFAULT_FM_BASS_RATIO as ENGINE_DEFAULT_FM_BASS_RATIO,
     DEFAULT_FORMANT_DEPTH as ENGINE_DEFAULT_FORMANT_DEPTH,
     DEFAULT_FORMANT_RATE as ENGINE_DEFAULT_FORMANT_RATE,
     DEFAULT_GROOVE_AUTO_LOCK as ENGINE_DEFAULT_GROOVE_AUTO_LOCK,
@@ -69,17 +74,19 @@ use squawk_engine::{
     DEFAULT_SUPPORT_WIDTH as ENGINE_DEFAULT_SUPPORT_WIDTH,
     DEFAULT_VELOCITY_COUPLING as ENGINE_DEFAULT_VELOCITY_COUPLING, DING_BRIGHTNESS_RANGE,
     DING_FORMANT_RANGE, DING_RESONANCE_RANGE, DING_SHAPE_RANGE, DING_SPREAD_RANGE,
-    DING_STRINGS_RANGE, Decorations, Engine, EngineParams, ExciterMode, FORMANT_DEPTH_RANGE,
-    FORMANT_RATE_RANGE, GROOVE_CLICK_LEVEL_RANGE, GROOVE_PHASE_PULL_RANGE,
-    GROOVE_SENSITIVITY_RANGE, GrooveStatus, GrooveTracker, HANDPAN_COUPLING_RANGE,
-    HANDPAN_DECAY_RANGE, HANDPAN_DETUNE_CENTS_RANGE, HANDPAN_DING_MAX as ENGINE_HANDPAN_DING_MAX,
-    HANDPAN_DING_MIN as ENGINE_HANDPAN_DING_MIN, HANDPAN_GLIDE_RANGE, HANDPAN_HIT_RANGE,
-    HANDPAN_PARTIAL_RANGE, HANDPAN_SCALE_COUNT as ENGINE_HANDPAN_SCALE_COUNT, Handpan,
-    MIX_LEVEL_RANGE, PAN_RANGE, PlayMemory, REVERB_BASS_RANGE, REVERB_DECAY_RANGE,
-    REVERB_DING_RANGE, REVERB_ECHO_RANGE, REVERB_HANDPAN_RANGE, REVERB_RECENT_RANGE,
-    REVERB_SECOND_RANGE, REVERB_SUPPORT_RANGE, REVERB_TONE_RANGE, Reverb, SUPPORT_DRIFT_RANGE,
-    SUPPORT_FADE_RANGE, SUPPORT_LEVEL_RANGE, SUPPORT_MOTION_RANGE, SUPPORT_PULSE_RANGE,
-    SUPPORT_WANDER_RANGE, SUPPORT_WIDTH_RANGE, StrikeVoice, Support, stereo_pan,
+    DING_STRINGS_RANGE, Decorations, Engine, EngineParams, ExciterMode, FM_BASS_DECAY_RANGE,
+    FM_BASS_FEEDBACK_RANGE, FM_BASS_INDEX_DECAY_RANGE, FM_BASS_INDEX_RANGE, FM_BASS_RATIO_RANGE,
+    FORMANT_DEPTH_RANGE, FORMANT_RATE_RANGE, FmBass, FmBassParams, GROOVE_CLICK_LEVEL_RANGE,
+    GROOVE_PHASE_PULL_RANGE, GROOVE_SENSITIVITY_RANGE, GrooveStatus, GrooveTracker,
+    HANDPAN_COUPLING_RANGE, HANDPAN_DECAY_RANGE, HANDPAN_DETUNE_CENTS_RANGE,
+    HANDPAN_DING_MAX as ENGINE_HANDPAN_DING_MAX, HANDPAN_DING_MIN as ENGINE_HANDPAN_DING_MIN,
+    HANDPAN_GLIDE_RANGE, HANDPAN_HIT_RANGE, HANDPAN_PARTIAL_RANGE,
+    HANDPAN_SCALE_COUNT as ENGINE_HANDPAN_SCALE_COUNT, Handpan, MIX_LEVEL_RANGE, PAN_RANGE,
+    PlayMemory, REVERB_BASS_RANGE, REVERB_DECAY_RANGE, REVERB_DING_RANGE, REVERB_ECHO_RANGE,
+    REVERB_HANDPAN_RANGE, REVERB_RECENT_RANGE, REVERB_SECOND_RANGE, REVERB_SUPPORT_RANGE,
+    REVERB_TONE_RANGE, Reverb, SUPPORT_DRIFT_RANGE, SUPPORT_FADE_RANGE, SUPPORT_LEVEL_RANGE,
+    SUPPORT_MOTION_RANGE, SUPPORT_PULSE_RANGE, SUPPORT_WANDER_RANGE, SUPPORT_WIDTH_RANGE,
+    StrikeVoice, Support, stereo_pan,
 };
 
 use settings::SettingsStore;
@@ -153,6 +160,13 @@ pub(crate) const DEFAULT_DING_RESONANCE: f32 = ENGINE_DEFAULT_DING_RESONANCE;
 pub(crate) const DEFAULT_MIX_LEVEL: f32 = ENGINE_DEFAULT_MIX_LEVEL;
 pub(crate) const DEFAULT_DECO_DENSITY: f32 = ENGINE_DEFAULT_DECO_DENSITY;
 pub(crate) const DEFAULT_DECO_LAG_BEATS: f32 = ENGINE_DEFAULT_DECO_LAG_BEATS;
+pub(crate) const DEFAULT_FM_BASS_DECAY: f32 = ENGINE_DEFAULT_FM_BASS_DECAY;
+pub(crate) const DEFAULT_FM_BASS_RATIO: f32 = ENGINE_DEFAULT_FM_BASS_RATIO;
+pub(crate) const DEFAULT_FM_BASS_INDEX: f32 = ENGINE_DEFAULT_FM_BASS_INDEX;
+pub(crate) const DEFAULT_FM_BASS_INDEX_DECAY: f32 = ENGINE_DEFAULT_FM_BASS_INDEX_DECAY;
+pub(crate) const DEFAULT_FM_BASS_FEEDBACK: f32 = ENGINE_DEFAULT_FM_BASS_FEEDBACK;
+pub(crate) const DEFAULT_FM_BASS_LEVEL: f32 = 1.0;
+pub(crate) const FM_BASS_LEVEL_RANGE: (f32, f32) = (0.0, 2.0);
 pub(crate) const DEFAULT_PAN: f32 = ENGINE_DEFAULT_PAN;
 pub(crate) const DEFAULT_FORMANT_RATE: f32 = ENGINE_DEFAULT_FORMANT_RATE;
 pub(crate) const DEFAULT_FORMANT_DEPTH: f32 = ENGINE_DEFAULT_FORMANT_DEPTH;
@@ -170,6 +184,7 @@ pub(crate) const GROOVE_IOI_CAP: usize = 12;
 pub(crate) enum Instrument {
     Modal = 0,
     Handpan = 1,
+    Bass = 2,
 }
 
 impl Instrument {
@@ -180,8 +195,14 @@ impl Instrument {
     pub(crate) fn from_u8(value: u8) -> Self {
         match value {
             1 => Instrument::Handpan,
+            2 => Instrument::Bass,
             _ => Instrument::Modal,
         }
+    }
+
+    /// Handpan-style pad keyboard / note layout.
+    pub(crate) fn uses_handpan_keys(self) -> bool {
+        matches!(self, Instrument::Handpan | Instrument::Bass)
     }
 }
 
@@ -299,6 +320,12 @@ struct ControlBlock {
     groove_sensitivity_bits: AtomicU32,
     groove_phase_pull_bits: AtomicU32,
     groove_click_level_bits: AtomicU32,
+    fm_bass_decay_bits: AtomicU32,
+    fm_bass_ratio_bits: AtomicU32,
+    fm_bass_index_bits: AtomicU32,
+    fm_bass_index_decay_bits: AtomicU32,
+    fm_bass_feedback_bits: AtomicU32,
+    fm_bass_level_bits: AtomicU32,
     groove_click_enabled: AtomicBool,
     groove_auto_lock: AtomicBool,
     groove_lock_cmd: AtomicU8,
@@ -404,6 +431,12 @@ impl ControlBlock {
             groove_sensitivity_bits: AtomicU32::new(DEFAULT_GROOVE_SENSITIVITY.to_bits()),
             groove_phase_pull_bits: AtomicU32::new(DEFAULT_GROOVE_PHASE_PULL.to_bits()),
             groove_click_level_bits: AtomicU32::new(DEFAULT_GROOVE_CLICK_LEVEL.to_bits()),
+            fm_bass_decay_bits: AtomicU32::new(DEFAULT_FM_BASS_DECAY.to_bits()),
+            fm_bass_ratio_bits: AtomicU32::new(DEFAULT_FM_BASS_RATIO.to_bits()),
+            fm_bass_index_bits: AtomicU32::new(DEFAULT_FM_BASS_INDEX.to_bits()),
+            fm_bass_index_decay_bits: AtomicU32::new(DEFAULT_FM_BASS_INDEX_DECAY.to_bits()),
+            fm_bass_feedback_bits: AtomicU32::new(DEFAULT_FM_BASS_FEEDBACK.to_bits()),
+            fm_bass_level_bits: AtomicU32::new(DEFAULT_FM_BASS_LEVEL.to_bits()),
             groove_click_enabled: AtomicBool::new(DEFAULT_GROOVE_CLICK_ENABLED),
             groove_auto_lock: AtomicBool::new(DEFAULT_GROOVE_AUTO_LOCK),
             groove_lock_cmd: AtomicU8::new(GROOVE_LOCK_CMD_NONE),
@@ -531,6 +564,14 @@ impl ControlBlock {
             groove_click_level: f32::from_bits(
                 self.groove_click_level_bits.load(Ordering::Relaxed),
             ),
+            fm_bass_decay: f32::from_bits(self.fm_bass_decay_bits.load(Ordering::Relaxed)),
+            fm_bass_ratio: f32::from_bits(self.fm_bass_ratio_bits.load(Ordering::Relaxed)),
+            fm_bass_index: f32::from_bits(self.fm_bass_index_bits.load(Ordering::Relaxed)),
+            fm_bass_index_decay: f32::from_bits(
+                self.fm_bass_index_decay_bits.load(Ordering::Relaxed),
+            ),
+            fm_bass_feedback: f32::from_bits(self.fm_bass_feedback_bits.load(Ordering::Relaxed)),
+            fm_bass_level: f32::from_bits(self.fm_bass_level_bits.load(Ordering::Relaxed)),
             groove_click_enabled: self.groove_click_enabled.load(Ordering::Relaxed),
             groove_auto_lock: self.groove_auto_lock.load(Ordering::Relaxed),
             groove_lock_cmd: self
@@ -675,6 +716,28 @@ impl ControlBlock {
     pub(crate) fn set_instrument_u8(&self, instrument: u8) {
         self.instrument
             .store(Instrument::from_u8(instrument).as_u8(), Ordering::Relaxed);
+    }
+
+    pub(crate) fn fm_bass_params(&self) -> FmBassParams {
+        FmBassParams {
+            decay: self.parameter_value(ParameterId::FmBassDecay),
+            ratio: self.parameter_value(ParameterId::FmBassRatio),
+            index: self.parameter_value(ParameterId::FmBassIndex),
+            index_decay: self.parameter_value(ParameterId::FmBassIndexDecay),
+            feedback: self.parameter_value(ParameterId::FmBassFeedback),
+            level: self.parameter_value(ParameterId::FmBassLevel),
+        }
+        .clamp()
+    }
+
+    pub(crate) fn apply_fm_bass_params(&self, params: FmBassParams) {
+        let p = params.clamp();
+        self.set_parameter_value(ParameterId::FmBassDecay, p.decay);
+        self.set_parameter_value(ParameterId::FmBassRatio, p.ratio);
+        self.set_parameter_value(ParameterId::FmBassIndex, p.index);
+        self.set_parameter_value(ParameterId::FmBassIndexDecay, p.index_decay);
+        self.set_parameter_value(ParameterId::FmBassFeedback, p.feedback);
+        self.set_parameter_value(ParameterId::FmBassLevel, p.level);
     }
 
     #[inline]
@@ -1024,6 +1087,24 @@ impl ControlBlock {
             ParameterId::GrooveClickLevel => {
                 f32::from_bits(self.groove_click_level_bits.load(Ordering::Relaxed))
             }
+            ParameterId::FmBassDecay => {
+                f32::from_bits(self.fm_bass_decay_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::FmBassRatio => {
+                f32::from_bits(self.fm_bass_ratio_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::FmBassIndex => {
+                f32::from_bits(self.fm_bass_index_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::FmBassIndexDecay => {
+                f32::from_bits(self.fm_bass_index_decay_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::FmBassFeedback => {
+                f32::from_bits(self.fm_bass_feedback_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::FmBassLevel => {
+                f32::from_bits(self.fm_bass_level_bits.load(Ordering::Relaxed))
+            }
         }
     }
 
@@ -1195,6 +1276,24 @@ impl ControlBlock {
             ParameterId::GrooveClickLevel => self
                 .groove_click_level_bits
                 .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::FmBassDecay => self
+                .fm_bass_decay_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::FmBassRatio => self
+                .fm_bass_ratio_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::FmBassIndex => self
+                .fm_bass_index_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::FmBassIndexDecay => self
+                .fm_bass_index_decay_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::FmBassFeedback => self
+                .fm_bass_feedback_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::FmBassLevel => self
+                .fm_bass_level_bits
+                .store(value.to_bits(), Ordering::Relaxed),
         }
     }
 
@@ -1277,6 +1376,12 @@ impl ControlBlock {
         self.set_parameter_value(ParameterId::GrooveSensitivity, DEFAULT_GROOVE_SENSITIVITY);
         self.set_parameter_value(ParameterId::GroovePhasePull, DEFAULT_GROOVE_PHASE_PULL);
         self.set_parameter_value(ParameterId::GrooveClickLevel, DEFAULT_GROOVE_CLICK_LEVEL);
+        self.set_parameter_value(ParameterId::FmBassDecay, DEFAULT_FM_BASS_DECAY);
+        self.set_parameter_value(ParameterId::FmBassRatio, DEFAULT_FM_BASS_RATIO);
+        self.set_parameter_value(ParameterId::FmBassIndex, DEFAULT_FM_BASS_INDEX);
+        self.set_parameter_value(ParameterId::FmBassIndexDecay, DEFAULT_FM_BASS_INDEX_DECAY);
+        self.set_parameter_value(ParameterId::FmBassFeedback, DEFAULT_FM_BASS_FEEDBACK);
+        self.set_parameter_value(ParameterId::FmBassLevel, DEFAULT_FM_BASS_LEVEL);
         self.set_groove_click_enabled(DEFAULT_GROOVE_CLICK_ENABLED);
         self.set_groove_auto_lock(DEFAULT_GROOVE_AUTO_LOCK);
         self.request_groove_unlock();
@@ -1397,6 +1502,12 @@ struct ControlSnapshot {
     groove_sensitivity: f32,
     groove_phase_pull: f32,
     groove_click_level: f32,
+    fm_bass_decay: f32,
+    fm_bass_ratio: f32,
+    fm_bass_index: f32,
+    fm_bass_index_decay: f32,
+    fm_bass_feedback: f32,
+    fm_bass_level: f32,
     groove_click_enabled: bool,
     groove_auto_lock: bool,
     groove_lock_cmd: u8,
@@ -1471,6 +1582,12 @@ pub enum ParameterId {
     GrooveSensitivity,
     GroovePhasePull,
     GrooveClickLevel,
+    FmBassDecay,
+    FmBassRatio,
+    FmBassIndex,
+    FmBassIndexDecay,
+    FmBassFeedback,
+    FmBassLevel,
 }
 
 const MODAL_PARAMETERS: [ParameterId; 12] = [
@@ -1486,6 +1603,14 @@ const MODAL_PARAMETERS: [ParameterId; 12] = [
     ParameterId::BreathNoiseCutoffHz,
     ParameterId::BreathFeedback,
     ParameterId::BreathAutoLevel,
+];
+
+const FM_BASS_PARAMETERS: [ParameterId; 5] = [
+    ParameterId::FmBassDecay,
+    ParameterId::FmBassRatio,
+    ParameterId::FmBassIndex,
+    ParameterId::FmBassIndexDecay,
+    ParameterId::FmBassFeedback,
 ];
 
 const HANDPAN_PARAMETERS: [ParameterId; 9] = [
@@ -1602,6 +1727,12 @@ impl ParameterId {
             ParameterId::GrooveSensitivity => 63,
             ParameterId::GroovePhasePull => 64,
             ParameterId::GrooveClickLevel => 65,
+            ParameterId::FmBassDecay => 67,
+            ParameterId::FmBassRatio => 68,
+            ParameterId::FmBassIndex => 69,
+            ParameterId::FmBassIndexDecay => 71,
+            ParameterId::FmBassFeedback => 72,
+            ParameterId::FmBassLevel => 70,
         }
     }
 
@@ -1674,6 +1805,12 @@ impl ParameterId {
             63 => Some(ParameterId::GrooveSensitivity),
             64 => Some(ParameterId::GroovePhasePull),
             65 => Some(ParameterId::GrooveClickLevel),
+            67 => Some(ParameterId::FmBassDecay),
+            68 => Some(ParameterId::FmBassRatio),
+            69 => Some(ParameterId::FmBassIndex),
+            70 => Some(ParameterId::FmBassLevel),
+            71 => Some(ParameterId::FmBassIndexDecay),
+            72 => Some(ParameterId::FmBassFeedback),
             _ => None,
         }
     }
@@ -1684,6 +1821,10 @@ impl ParameterId {
 
     pub(crate) fn handpan() -> &'static [ParameterId] {
         &HANDPAN_PARAMETERS
+    }
+
+    pub(crate) fn fm_bass() -> &'static [ParameterId] {
+        &FM_BASS_PARAMETERS
     }
 
     pub(crate) fn analysis() -> &'static [ParameterId] {
@@ -1779,6 +1920,12 @@ impl ParameterId {
             ParameterId::GrooveSensitivity => "Sensitivity",
             ParameterId::GroovePhasePull => "Phase pull",
             ParameterId::GrooveClickLevel => "Click level",
+            ParameterId::FmBassDecay => "Decay",
+            ParameterId::FmBassRatio => "Ratio",
+            ParameterId::FmBassIndex => "Index",
+            ParameterId::FmBassIndexDecay => "Index decay",
+            ParameterId::FmBassFeedback => "Feedback",
+            ParameterId::FmBassLevel => "Level",
         }
     }
 
@@ -1851,6 +1998,12 @@ impl ParameterId {
             ParameterId::GrooveSensitivity => GROOVE_SENSITIVITY_RANGE,
             ParameterId::GroovePhasePull => GROOVE_PHASE_PULL_RANGE,
             ParameterId::GrooveClickLevel => GROOVE_CLICK_LEVEL_RANGE,
+            ParameterId::FmBassDecay => FM_BASS_DECAY_RANGE,
+            ParameterId::FmBassRatio => FM_BASS_RATIO_RANGE,
+            ParameterId::FmBassIndex => FM_BASS_INDEX_RANGE,
+            ParameterId::FmBassIndexDecay => FM_BASS_INDEX_DECAY_RANGE,
+            ParameterId::FmBassFeedback => FM_BASS_FEEDBACK_RANGE,
+            ParameterId::FmBassLevel => FM_BASS_LEVEL_RANGE,
         }
     }
 
@@ -1950,7 +2103,13 @@ impl ParameterId {
             ParameterId::FormantDepth => format!("{value:.2} oct"),
             ParameterId::GrooveSensitivity
             | ParameterId::GroovePhasePull
-            | ParameterId::GrooveClickLevel => format!("{value:.2}"),
+            | ParameterId::GrooveClickLevel
+            | ParameterId::FmBassDecay
+            | ParameterId::FmBassRatio
+            | ParameterId::FmBassIndex
+            | ParameterId::FmBassIndexDecay
+            | ParameterId::FmBassFeedback
+            | ParameterId::FmBassLevel => format!("{value:.2}"),
         }
     }
 
@@ -2029,6 +2188,12 @@ impl ParameterId {
             ParameterId::GrooveSensitivity => "groove_sensitivity",
             ParameterId::GroovePhasePull => "groove_phase_pull",
             ParameterId::GrooveClickLevel => "groove_click_level",
+            ParameterId::FmBassDecay => "fm_bass_decay",
+            ParameterId::FmBassRatio => "fm_bass_ratio",
+            ParameterId::FmBassIndex => "fm_bass_index",
+            ParameterId::FmBassIndexDecay => "fm_bass_index_decay",
+            ParameterId::FmBassFeedback => "fm_bass_feedback",
+            ParameterId::FmBassLevel => "fm_bass_level",
         }
     }
 
@@ -2101,6 +2266,12 @@ impl ParameterId {
             "groove_sensitivity" => Some(ParameterId::GrooveSensitivity),
             "groove_phase_pull" => Some(ParameterId::GroovePhasePull),
             "groove_click_level" => Some(ParameterId::GrooveClickLevel),
+            "fm_bass_decay" => Some(ParameterId::FmBassDecay),
+            "fm_bass_ratio" => Some(ParameterId::FmBassRatio),
+            "fm_bass_index" => Some(ParameterId::FmBassIndex),
+            "fm_bass_index_decay" => Some(ParameterId::FmBassIndexDecay),
+            "fm_bass_feedback" => Some(ParameterId::FmBassFeedback),
+            "fm_bass_level" => Some(ParameterId::FmBassLevel),
             _ => None,
         }
     }
@@ -2406,6 +2577,12 @@ fn main() -> anyhow::Result<()> {
     control.set_parameter_value(ParameterId::GrooveSensitivity, snapshot.groove_sensitivity);
     control.set_parameter_value(ParameterId::GroovePhasePull, snapshot.groove_phase_pull);
     control.set_parameter_value(ParameterId::GrooveClickLevel, snapshot.groove_click_level);
+    control.set_parameter_value(ParameterId::FmBassDecay, snapshot.fm_bass_decay);
+    control.set_parameter_value(ParameterId::FmBassRatio, snapshot.fm_bass_ratio);
+    control.set_parameter_value(ParameterId::FmBassIndex, snapshot.fm_bass_index);
+    control.set_parameter_value(ParameterId::FmBassIndexDecay, snapshot.fm_bass_index_decay);
+    control.set_parameter_value(ParameterId::FmBassFeedback, snapshot.fm_bass_feedback);
+    control.set_parameter_value(ParameterId::FmBassLevel, snapshot.fm_bass_level);
     control.set_groove_click_enabled(snapshot.groove_click_enabled);
     control.set_groove_auto_lock(snapshot.groove_auto_lock);
 
@@ -2706,6 +2883,7 @@ where
     let try_build = |cfg: &cpal::StreamConfig| {
         let mut engine = Engine::new(cfg.sample_rate.0 as f32, params);
         let mut handpan = Handpan::new(cfg.sample_rate.0 as f32);
+        let mut fm_bass = FmBass::new(cfg.sample_rate.0 as f32);
         let mut bells = Bells::new(cfg.sample_rate.0 as f32);
         let mut support = Support::new(cfg.sample_rate.0 as f32);
         let mut groove = GrooveTracker::new(cfg.sample_rate.0 as f32);
@@ -2886,6 +3064,24 @@ where
                     });
                     control.publish_groove(&groove.snapshot());
                     peak
+                } else if snapshot.instrument == Instrument::Bass.as_u8() {
+                    fm_bass.set_decay(snapshot.fm_bass_decay);
+                    fm_bass.set_ratio(snapshot.fm_bass_ratio);
+                    fm_bass.set_index(snapshot.fm_bass_index);
+                    fm_bass.set_index_decay(snapshot.fm_bass_index_decay);
+                    fm_bass.set_feedback(snapshot.fm_bass_feedback);
+                    if triggered {
+                        for strike in strikes.iter().take(strike_count) {
+                            fm_bass.strike_at(strike.0, strike.1, strike.2);
+                        }
+                    }
+                    let level = snapshot
+                        .fm_bass_level
+                        .clamp(FM_BASS_LEVEL_RANGE.0, FM_BASS_LEVEL_RANGE.1);
+                    write_stereo_frames::<T>(data, channels, &audio_tap, || {
+                        let mono = StrikeVoice::next_sample(&mut fm_bass) * level;
+                        (mono, mono)
+                    })
                 } else {
                     engine.set_exciter_mode(ExciterMode::from_u8(snapshot.exciter_mode));
                     engine.set_gate(snapshot.gate);

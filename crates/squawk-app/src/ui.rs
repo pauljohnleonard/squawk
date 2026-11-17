@@ -14,8 +14,8 @@ use crate::{
     settings::SettingsStore,
 };
 use squawk_engine::{
-    ExciterMode, GrooveStatus, HANDPAN_DING_MAX, HANDPAN_DING_MIN, HANDPAN_SCALE_COUNT,
-    handpan_notes, handpan_scale_name, support_part_flags,
+    ExciterMode, FmBassRecipe, GrooveStatus, HANDPAN_DING_MAX, HANDPAN_DING_MIN,
+    HANDPAN_SCALE_COUNT, handpan_notes, handpan_scale_name, support_part_flags,
 };
 
 pub fn launch(
@@ -92,6 +92,9 @@ struct SquawkApp {
     analysis_freeze_rms_threshold: f32,
     analysis_frozen: bool,
     analysis_last_window_rms: f32,
+
+    fm_bass_preset_name: String,
+    fm_bass_selected_preset: String,
 }
 
 impl SquawkApp {
@@ -145,6 +148,9 @@ impl SquawkApp {
             analysis_freeze_rms_threshold: 0.002,
             analysis_frozen: false,
             analysis_last_window_rms: 0.0,
+
+            fm_bass_preset_name: String::new(),
+            fm_bass_selected_preset: FmBassRecipe::Round.name().to_string(),
         }
     }
 
@@ -167,8 +173,7 @@ impl SquawkApp {
                         );
                     }
                     egui::Event::Text(text)
-                        if Instrument::from_u8(self.control.instrument())
-                            == Instrument::Handpan
+                        if Instrument::from_u8(self.control.instrument()).uses_handpan_keys()
                             && (text == "'" || text == "\"") =>
                     {
                         let now = Instant::now();
@@ -202,7 +207,7 @@ impl SquawkApp {
                         }
 
                         let handpan_keys =
-                            Instrument::from_u8(self.control.instrument()) == Instrument::Handpan;
+                            Instrument::from_u8(self.control.instrument()).uses_handpan_keys();
 
                         match (key, pressed, handpan_keys) {
                             (egui::Key::ArrowUp, true, false) => {
@@ -343,19 +348,36 @@ impl SquawkApp {
     }
 
     fn reconcile_module(&mut self) {
-        let handpan = Instrument::from_u8(self.control.instrument()) == Instrument::Handpan;
-        if handpan && self.open_module == DeskModule::Modal {
-            self.open_module = DeskModule::Handpan;
-        } else if !handpan && self.open_module != DeskModule::Modal {
-            self.open_module = DeskModule::Modal;
+        let expected = match Instrument::from_u8(self.control.instrument()) {
+            Instrument::Handpan => DeskModule::Handpan,
+            Instrument::Bass => DeskModule::FmBass,
+            Instrument::Modal => DeskModule::Modal,
+        };
+        let ok = match expected {
+            DeskModule::Handpan => matches!(
+                self.open_module,
+                DeskModule::Handpan
+                    | DeskModule::Ding
+                    | DeskModule::Recent
+                    | DeskModule::Second
+                    | DeskModule::Bass
+                    | DeskModule::Echo
+                    | DeskModule::Reverb
+            ),
+            DeskModule::FmBass => self.open_module == DeskModule::FmBass,
+            DeskModule::Modal => self.open_module == DeskModule::Modal,
+            _ => false,
+        };
+        if !ok {
+            self.open_module = expected;
         }
     }
 
     fn strips(&self) -> &'static [DeskModule] {
-        if Instrument::from_u8(self.control.instrument()) == Instrument::Handpan {
-            &HANDPAN_STRIPS
-        } else {
-            &MODAL_STRIPS
+        match Instrument::from_u8(self.control.instrument()) {
+            Instrument::Handpan => &HANDPAN_STRIPS,
+            Instrument::Bass => &BASS_STRIPS,
+            Instrument::Modal => &MODAL_STRIPS,
         }
     }
 
@@ -365,6 +387,7 @@ impl SquawkApp {
             let mut instrument = self.control.instrument();
             let selected = match Instrument::from_u8(instrument) {
                 Instrument::Handpan => "Handpan",
+                Instrument::Bass => "Bass",
                 Instrument::Modal => "Modal",
             };
             egui::ComboBox::from_id_source("instrument")
@@ -372,17 +395,22 @@ impl SquawkApp {
                 .show_ui(row, |combo: &mut egui::Ui| {
                     combo.selectable_value(&mut instrument, Instrument::Modal.as_u8(), "Modal");
                     combo.selectable_value(&mut instrument, Instrument::Handpan.as_u8(), "Handpan");
+                    combo.selectable_value(&mut instrument, Instrument::Bass.as_u8(), "Bass");
                 });
             if instrument != self.control.instrument() {
                 self.control.set_instrument_u8(instrument);
-                self.open_module = if Instrument::from_u8(instrument) == Instrument::Handpan {
-                    DeskModule::Handpan
-                } else {
-                    DeskModule::Modal
+                self.open_module = match Instrument::from_u8(instrument) {
+                    Instrument::Handpan => DeskModule::Handpan,
+                    Instrument::Bass => DeskModule::FmBass,
+                    Instrument::Modal => DeskModule::Modal,
                 };
                 if let Err(err) = self.settings.update_instrument(instrument) {
                     eprintln!("Warning: Failed to persist instrument update: {err}");
                 }
+            }
+
+            if Instrument::from_u8(self.control.instrument()).uses_handpan_keys() {
+                draw_handpan_layout(row, &self.control, &self.settings);
             }
 
             if row
@@ -601,7 +629,7 @@ impl SquawkApp {
                     self.shift_velocity(5);
                 }
             });
-            if Instrument::from_u8(self.control.instrument()) != Instrument::Handpan {
+            if !Instrument::from_u8(self.control.instrument()).uses_handpan_keys() {
                 row.add_space(12.0);
                 row.label("Octave");
                 row.push_id("octave_down", |row| {
@@ -618,7 +646,7 @@ impl SquawkApp {
             }
         });
 
-        if Instrument::from_u8(self.control.instrument()) == Instrument::Handpan {
+        if Instrument::from_u8(self.control.instrument()).uses_handpan_keys() {
             let notes = handpan_notes(self.control.handpan_scale(), self.control.handpan_ding());
             let mut place = self.keyboard_rows_set_place;
             if ui
@@ -701,20 +729,31 @@ impl SquawkApp {
             egui::ViewportId::from_hash_of("editor"),
             builder,
             |ctx, class| {
-                let draw = |ui: &mut egui::Ui| {
-                    egui::ScrollArea::vertical()
-                        .id_source("editor_scroll")
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            self.draw_inspector(ui);
-                        });
-                };
+                // Native viewports get their own input; embedded shares the root ctx.
+                if class != egui::ViewportClass::Embedded {
+                    self.handle_computer_keyboard(ctx);
+                }
+                let title = format!("squawk — {}", self.open_module.name());
                 if class == egui::ViewportClass::Embedded {
-                    egui::Window::new(format!("squawk — {}", self.open_module.name()))
+                    egui::Window::new(title)
                         .id(egui::Id::new("editor_embedded"))
-                        .show(ctx, |ui| draw(ui));
+                        .show(ctx, |ui| {
+                            egui::ScrollArea::vertical()
+                                .id_source("editor_scroll")
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    self.draw_inspector(ui);
+                                });
+                        });
                 } else {
-                    egui::CentralPanel::default().show(ctx, |ui| draw(ui));
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_source("editor_scroll")
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                self.draw_inspector(ui);
+                            });
+                    });
                 }
                 if ctx.input(|i| i.viewport().close_requested()) {
                     close = true;
@@ -742,6 +781,9 @@ impl SquawkApp {
             egui::ViewportId::from_hash_of("keyboard"),
             builder,
             |ctx, class| {
+                if class != egui::ViewportClass::Embedded {
+                    self.handle_computer_keyboard(ctx);
+                }
                 if class == egui::ViewportClass::Embedded {
                     egui::Window::new("squawk — Keyboard")
                         .id(egui::Id::new("keyboard_embedded"))
@@ -779,6 +821,9 @@ impl SquawkApp {
             egui::ViewportId::from_hash_of("analysis"),
             builder,
             |ctx, class| {
+                if class != egui::ViewportClass::Embedded {
+                    self.handle_computer_keyboard(ctx);
+                }
                 if class == egui::ViewportClass::Embedded {
                     egui::Window::new("squawk — Analysis")
                         .id(egui::Id::new("analysis_embedded"))
@@ -828,6 +873,9 @@ impl SquawkApp {
             egui::ViewportId::from_hash_of("groove"),
             builder,
             |ctx, class| {
+                if class != egui::ViewportClass::Embedded {
+                    self.handle_computer_keyboard(ctx);
+                }
                 if class == egui::ViewportClass::Embedded {
                     egui::Window::new("squawk — Groove")
                         .id(egui::Id::new("groove_embedded"))
@@ -959,11 +1007,11 @@ impl SquawkApp {
         }
     }
 
-    fn draw_inspector(&self, ui: &mut egui::Ui) {
+    fn draw_inspector(&mut self, ui: &mut egui::Ui) {
         ui.heading(self.open_module.name());
         match self.open_module {
             DeskModule::Handpan => {
-                draw_handpan_layout(ui, &self.control, &self.settings);
+                ui.label("Scale, ding, and tuning live in the main bar (shared with Bass).");
                 ui.add_space(6.0);
                 for &param in ParameterId::handpan() {
                     self.draw_parameter(ui, param, true);
@@ -984,6 +1032,7 @@ impl SquawkApp {
             DeskModule::Bass => {
                 ui.label("Follows the degree the beat agrees on. Pulse and Fade live on Analysis.");
             }
+            DeskModule::FmBass => self.draw_fm_bass(ui),
             DeskModule::Echo => {
                 ui.label(
                     "Decorations recall recent phrases after a beat lag once tempo is locked. Density thins the shadow — no feedback wash. Bells sit about an octave above the pad.",
@@ -1035,6 +1084,102 @@ impl SquawkApp {
                 }
             }
             DeskModule::Modal => self.draw_modal(ui),
+        }
+    }
+
+    fn apply_fm_bass_params(&self, params: squawk_engine::FmBassParams) {
+        self.control.apply_fm_bass_params(params);
+        if let Err(err) = self.settings.update_fm_bass_params(params) {
+            eprintln!("Warning: Failed to persist FM bass params: {err}");
+        }
+    }
+
+    fn draw_fm_bass(&mut self, ui: &mut egui::Ui) {
+        ui.label("Monophonic FM bass. Same pad layout as Handpan; last note wins.");
+        ui.add_space(8.0);
+
+        let user_presets = self.settings.fm_bass_presets();
+        ui.horizontal(|row| {
+            row.label("Preset");
+            egui::ComboBox::from_id_source("fm_bass_preset")
+                .selected_text(&self.fm_bass_selected_preset)
+                .width(160.0)
+                .show_ui(row, |combo| {
+                    for recipe in FmBassRecipe::ALL {
+                        combo.selectable_value(
+                            &mut self.fm_bass_selected_preset,
+                            recipe.name().to_string(),
+                            format!("Factory / {}", recipe.name()),
+                        );
+                    }
+                    if !user_presets.is_empty() {
+                        combo.separator();
+                        for (name, _) in &user_presets {
+                            combo.selectable_value(
+                                &mut self.fm_bass_selected_preset,
+                                name.clone(),
+                                format!("User / {name}"),
+                            );
+                        }
+                    }
+                });
+            if row.button("Load").clicked() {
+                let selected = self.fm_bass_selected_preset.clone();
+                let params = FmBassRecipe::ALL
+                    .iter()
+                    .find(|recipe| recipe.name() == selected)
+                    .map(|recipe| recipe.params())
+                    .or_else(|| {
+                        user_presets
+                            .iter()
+                            .find(|(name, _)| name == &selected)
+                            .map(|(_, params)| *params)
+                    });
+                if let Some(params) = params {
+                    self.apply_fm_bass_params(params);
+                    self.fm_bass_preset_name = selected;
+                }
+            }
+            let can_delete = user_presets
+                .iter()
+                .any(|(name, _)| name == &self.fm_bass_selected_preset);
+            if row
+                .add_enabled(can_delete, egui::Button::new("Delete"))
+                .clicked()
+            {
+                let name = self.fm_bass_selected_preset.clone();
+                if let Err(err) = self.settings.delete_fm_bass_preset(&name) {
+                    eprintln!("Warning: Failed to delete FM bass preset: {err}");
+                } else {
+                    self.fm_bass_selected_preset = FmBassRecipe::Round.name().to_string();
+                }
+            }
+        });
+
+        ui.horizontal(|row| {
+            row.label("Save as");
+            row.add(
+                egui::TextEdit::singleline(&mut self.fm_bass_preset_name)
+                    .desired_width(160.0)
+                    .hint_text("name"),
+            );
+            if row.button("Save").clicked() {
+                let name = self.fm_bass_preset_name.trim().to_string();
+                if !name.is_empty() {
+                    let params = self.control.fm_bass_params();
+                    if let Err(err) = self.settings.save_fm_bass_preset(&name, params) {
+                        eprintln!("Warning: Failed to save FM bass preset: {err}");
+                    } else {
+                        self.fm_bass_selected_preset = name;
+                    }
+                }
+            }
+        });
+
+        ui.add_space(10.0);
+        for &param in ParameterId::fm_bass() {
+            self.draw_parameter(ui, param, true);
+            ui.add_space(8.0);
         }
     }
 
@@ -1549,6 +1694,7 @@ enum DeskModule {
     Echo,
     Reverb,
     Modal,
+    FmBass,
 }
 
 const HANDPAN_STRIPS: [DeskModule; 7] = [
@@ -1561,6 +1707,8 @@ const HANDPAN_STRIPS: [DeskModule; 7] = [
     DeskModule::Reverb,
 ];
 
+const BASS_STRIPS: [DeskModule; 1] = [DeskModule::FmBass];
+
 const MODAL_STRIPS: [DeskModule; 1] = [DeskModule::Modal];
 
 impl DeskModule {
@@ -1570,7 +1718,7 @@ impl DeskModule {
             DeskModule::Ding => "Ding",
             DeskModule::Recent => "Recent",
             DeskModule::Second => "Second",
-            DeskModule::Bass => "Bass",
+            DeskModule::Bass | DeskModule::FmBass => "Bass",
             DeskModule::Echo => "Decorations",
             DeskModule::Reverb => "Reverb",
             DeskModule::Modal => "Modal",
@@ -1586,6 +1734,7 @@ impl DeskModule {
             DeskModule::Bass => Some(ParameterId::MixBass),
             DeskModule::Echo => Some(ParameterId::MixTaps),
             DeskModule::Modal => Some(ParameterId::OutputGain),
+            DeskModule::FmBass => Some(ParameterId::FmBassLevel),
             DeskModule::Reverb => None,
         }
     }
@@ -1598,7 +1747,7 @@ impl DeskModule {
             DeskModule::Second => Some(ParameterId::PanSecond),
             DeskModule::Bass => Some(ParameterId::PanBass),
             DeskModule::Echo => Some(ParameterId::PanEcho),
-            DeskModule::Reverb | DeskModule::Modal => None,
+            DeskModule::Reverb | DeskModule::Modal | DeskModule::FmBass => None,
         }
     }
 
@@ -1610,7 +1759,7 @@ impl DeskModule {
             DeskModule::Second => Some(ParameterId::ReverbSecond),
             DeskModule::Bass => Some(ParameterId::ReverbBass),
             DeskModule::Echo => Some(ParameterId::ReverbEcho),
-            DeskModule::Reverb | DeskModule::Modal => None,
+            DeskModule::Reverb | DeskModule::Modal | DeskModule::FmBass => None,
         }
     }
 
@@ -1621,7 +1770,9 @@ impl DeskModule {
             DeskModule::Second => Some(2),
             DeskModule::Bass => Some(3),
             DeskModule::Echo => Some(4),
-            DeskModule::Handpan | DeskModule::Reverb | DeskModule::Modal => None,
+            DeskModule::Handpan | DeskModule::Reverb | DeskModule::Modal | DeskModule::FmBass => {
+                None
+            }
         }
     }
 }
@@ -1716,31 +1867,29 @@ fn draw_handpan_layout(
     let mut tuning = control.handpan_tuning();
     let previous = (scale, ding, tuning);
 
-    ui.horizontal(|row| {
-        row.label("Scale");
-        egui::ComboBox::from_id_source("handpan_scale")
-            .selected_text(handpan_scale_name(scale))
-            .show_ui(row, |combo| {
-                for index in 0..HANDPAN_SCALE_COUNT {
-                    combo.selectable_value(&mut scale, index, handpan_scale_name(index));
-                }
-            });
-        row.label("Ding");
-        egui::ComboBox::from_id_source("handpan_ding")
-            .selected_text(note_name(ding))
-            .show_ui(row, |combo| {
-                for note in HANDPAN_DING_MIN..=HANDPAN_DING_MAX {
-                    combo.selectable_value(&mut ding, note, note_name(note));
-                }
-            });
-        row.label("Tuning");
-        egui::ComboBox::from_id_source("handpan_tuning")
-            .selected_text(if tuning == 0 { "Equal" } else { "Just" })
-            .show_ui(row, |combo| {
-                combo.selectable_value(&mut tuning, 0, "Equal");
-                combo.selectable_value(&mut tuning, 1, "Just");
-            });
-    });
+    ui.label("Scale");
+    egui::ComboBox::from_id_source("handpan_scale")
+        .selected_text(handpan_scale_name(scale))
+        .show_ui(ui, |combo| {
+            for index in 0..HANDPAN_SCALE_COUNT {
+                combo.selectable_value(&mut scale, index, handpan_scale_name(index));
+            }
+        });
+    ui.label("Ding");
+    egui::ComboBox::from_id_source("handpan_ding")
+        .selected_text(note_name(ding))
+        .show_ui(ui, |combo| {
+            for note in HANDPAN_DING_MIN..=HANDPAN_DING_MAX {
+                combo.selectable_value(&mut ding, note, note_name(note));
+            }
+        });
+    ui.label("Tuning");
+    egui::ComboBox::from_id_source("handpan_tuning")
+        .selected_text(if tuning == 0 { "Equal" } else { "Just" })
+        .show_ui(ui, |combo| {
+            combo.selectable_value(&mut tuning, 0, "Equal");
+            combo.selectable_value(&mut tuning, 1, "Just");
+        });
 
     if (scale, ding, tuning) != previous {
         control.set_handpan_layout(scale, ding, tuning);
@@ -1748,14 +1897,6 @@ fn draw_handpan_layout(
             eprintln!("Warning: Failed to persist handpan layout: {err}");
         }
     }
-
-    let notes = handpan_notes(scale, ding);
-    ui.label(format!(
-        "{}  {}  ·  {}",
-        handpan_scale_name(scale),
-        note_list(&notes),
-        if tuning == 0 { "Equal" } else { "Just" }
-    ));
 }
 
 fn note_list(notes: &[u8]) -> String {
