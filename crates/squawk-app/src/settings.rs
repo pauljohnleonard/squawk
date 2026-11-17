@@ -82,10 +82,23 @@ struct StoredSettings {
     reverb_handpan: f32,
     #[serde(default = "default_reverb_support")]
     reverb_support: f32,
+    /// Absent in older settings files; filled from `reverb_support` on load.
+    #[serde(default)]
+    reverb_ding: Option<f32>,
+    #[serde(default)]
+    reverb_recent: Option<f32>,
+    #[serde(default)]
+    reverb_second: Option<f32>,
+    #[serde(default)]
+    reverb_bass: Option<f32>,
+    #[serde(default = "default_reverb_echo")]
+    reverb_echo: f32,
     #[serde(default = "default_reverb_decay")]
     reverb_decay: f32,
     #[serde(default = "default_reverb_tone")]
     reverb_tone: f32,
+    #[serde(default = "default_echo_instrument")]
+    echo_instrument: u8,
     #[serde(default = "default_ding_wash")]
     ding_wash: u8,
     #[serde(default = "default_ding_shape")]
@@ -122,8 +135,13 @@ struct StoredSettings {
     mix_bass: f32,
     #[serde(default = "default_mix_level")]
     mix_taps: f32,
-    #[serde(default = "default_echo_feedback")]
-    echo_feedback: f32,
+    #[serde(default = "default_deco_density")]
+    deco_density: f32,
+    #[serde(default = "default_deco_lag_beats")]
+    deco_lag_beats: f32,
+    /// Legacy Echo feedback; folded into deco_density on load.
+    #[serde(default, skip_serializing)]
+    echo_feedback: Option<f32>,
     #[serde(default = "default_pan")]
     pan_handpan: f32,
     #[serde(default = "default_pan")]
@@ -134,14 +152,30 @@ struct StoredSettings {
     pan_second: f32,
     #[serde(default = "default_pan")]
     pan_bass: f32,
+    #[serde(default = "default_pan")]
+    pan_echo: f32,
     #[serde(default = "default_formant_rate")]
     formant_rate: f32,
     #[serde(default = "default_formant_depth")]
     formant_depth: f32,
+    #[serde(default = "default_groove_sensitivity")]
+    groove_sensitivity: f32,
+    #[serde(default = "default_groove_phase_pull")]
+    groove_phase_pull: f32,
+    #[serde(default = "default_groove_click_level")]
+    groove_click_level: f32,
+    #[serde(default = "default_groove_click_enabled")]
+    groove_click_enabled: bool,
+    #[serde(default = "default_groove_auto_lock")]
+    groove_auto_lock: bool,
     #[serde(default = "default_support_part_flags")]
     support_muted: [bool; 5],
     #[serde(default = "default_support_part_flags")]
     support_solo: [bool; 5],
+    #[serde(default)]
+    handpan_muted: bool,
+    #[serde(default)]
+    handpan_solo: bool,
     #[serde(default = "default_keyboard_rows_set_place")]
     keyboard_rows_set_place: bool,
     midi_cc: HashMap<String, u8>,
@@ -185,8 +219,14 @@ impl Default for StoredSettings {
             support_fade: crate::DEFAULT_SUPPORT_FADE,
             reverb_handpan: crate::DEFAULT_REVERB_HANDPAN,
             reverb_support: crate::DEFAULT_REVERB_SUPPORT,
+            reverb_ding: Some(crate::DEFAULT_REVERB_DING),
+            reverb_recent: Some(crate::DEFAULT_REVERB_RECENT),
+            reverb_second: Some(crate::DEFAULT_REVERB_SECOND),
+            reverb_bass: Some(crate::DEFAULT_REVERB_BASS),
+            reverb_echo: crate::DEFAULT_REVERB_ECHO,
             reverb_decay: crate::DEFAULT_REVERB_DECAY,
             reverb_tone: crate::DEFAULT_REVERB_TONE,
+            echo_instrument: crate::DEFAULT_ECHO_INSTRUMENT,
             ding_wash: default_ding_wash(),
             ding_shape: crate::DEFAULT_DING_SHAPE,
             ding_spread: crate::DEFAULT_DING_SPREAD,
@@ -205,16 +245,26 @@ impl Default for StoredSettings {
             mix_second: crate::DEFAULT_MIX_LEVEL,
             mix_bass: crate::DEFAULT_MIX_LEVEL,
             mix_taps: crate::DEFAULT_MIX_LEVEL,
-            echo_feedback: crate::DEFAULT_ECHO_FEEDBACK,
+            deco_density: crate::DEFAULT_DECO_DENSITY,
+            deco_lag_beats: crate::DEFAULT_DECO_LAG_BEATS,
+            echo_feedback: None,
             pan_handpan: crate::DEFAULT_PAN,
             pan_ding: crate::DEFAULT_PAN,
             pan_recent: crate::DEFAULT_PAN,
             pan_second: crate::DEFAULT_PAN,
             pan_bass: crate::DEFAULT_PAN,
+            pan_echo: crate::DEFAULT_PAN,
             formant_rate: crate::DEFAULT_FORMANT_RATE,
             formant_depth: crate::DEFAULT_FORMANT_DEPTH,
+            groove_sensitivity: crate::DEFAULT_GROOVE_SENSITIVITY,
+            groove_phase_pull: crate::DEFAULT_GROOVE_PHASE_PULL,
+            groove_click_level: crate::DEFAULT_GROOVE_CLICK_LEVEL,
+            groove_click_enabled: crate::DEFAULT_GROOVE_CLICK_ENABLED,
+            groove_auto_lock: crate::DEFAULT_GROOVE_AUTO_LOCK,
             support_muted: default_support_part_flags(),
             support_solo: default_support_part_flags(),
+            handpan_muted: false,
+            handpan_solo: false,
             keyboard_rows_set_place: default_keyboard_rows_set_place(),
             midi_cc: HashMap::new(),
         }
@@ -257,8 +307,14 @@ pub(crate) struct SettingsSnapshot {
     pub support_fade: f32,
     pub reverb_handpan: f32,
     pub reverb_support: f32,
+    pub reverb_ding: f32,
+    pub reverb_recent: f32,
+    pub reverb_second: f32,
+    pub reverb_bass: f32,
+    pub reverb_echo: f32,
     pub reverb_decay: f32,
     pub reverb_tone: f32,
+    pub echo_instrument: u8,
     pub ding_wash: u8,
     pub ding_shape: f32,
     pub ding_spread: f32,
@@ -277,16 +333,25 @@ pub(crate) struct SettingsSnapshot {
     pub mix_second: f32,
     pub mix_bass: f32,
     pub mix_taps: f32,
-    pub echo_feedback: f32,
+    pub deco_density: f32,
+    pub deco_lag_beats: f32,
     pub pan_handpan: f32,
     pub pan_ding: f32,
     pub pan_recent: f32,
     pub pan_second: f32,
     pub pan_bass: f32,
+    pub pan_echo: f32,
     pub formant_rate: f32,
     pub formant_depth: f32,
+    pub groove_sensitivity: f32,
+    pub groove_phase_pull: f32,
+    pub groove_click_level: f32,
+    pub groove_click_enabled: bool,
+    pub groove_auto_lock: bool,
     pub support_muted: u8,
     pub support_solo: u8,
+    pub handpan_muted: bool,
+    pub handpan_solo: bool,
     pub keyboard_rows_set_place: bool,
     pub midi_assignments: Vec<(ParameterId, u8)>,
 }
@@ -339,8 +404,18 @@ impl From<StoredSettings> for SettingsSnapshot {
             support_fade: ParameterId::SupportFade.clamp(value.support_fade),
             reverb_handpan: ParameterId::ReverbHandpan.clamp(value.reverb_handpan),
             reverb_support: ParameterId::ReverbSupport.clamp(value.reverb_support),
+            reverb_ding: ParameterId::ReverbDing
+                .clamp(value.reverb_ding.unwrap_or(value.reverb_support)),
+            reverb_recent: ParameterId::ReverbRecent
+                .clamp(value.reverb_recent.unwrap_or(value.reverb_support)),
+            reverb_second: ParameterId::ReverbSecond
+                .clamp(value.reverb_second.unwrap_or(value.reverb_support)),
+            reverb_bass: ParameterId::ReverbBass
+                .clamp(value.reverb_bass.unwrap_or(value.reverb_support)),
+            reverb_echo: ParameterId::ReverbEcho.clamp(value.reverb_echo),
             reverb_decay: ParameterId::ReverbDecay.clamp(value.reverb_decay),
             reverb_tone: ParameterId::ReverbTone.clamp(value.reverb_tone),
+            echo_instrument: crate::EchoInstrument::from_u8(value.echo_instrument).as_u8(),
             ding_wash: value.ding_wash.min(2),
             ding_shape: ParameterId::DingShape.clamp(value.ding_shape),
             ding_spread: ParameterId::DingSpread.clamp(value.ding_spread),
@@ -359,16 +434,26 @@ impl From<StoredSettings> for SettingsSnapshot {
             mix_second: ParameterId::MixSecond.clamp(value.mix_second),
             mix_bass: ParameterId::MixBass.clamp(value.mix_bass),
             mix_taps: ParameterId::MixTaps.clamp(value.mix_taps),
-            echo_feedback: ParameterId::EchoFeedback.clamp(value.echo_feedback),
+            deco_density: ParameterId::DecoDensity
+                .clamp(value.echo_feedback.unwrap_or(value.deco_density)),
+            deco_lag_beats: ParameterId::DecoLagBeats.clamp(value.deco_lag_beats),
             pan_handpan: ParameterId::PanHandpan.clamp(value.pan_handpan),
             pan_ding: ParameterId::PanDing.clamp(value.pan_ding),
             pan_recent: ParameterId::PanRecent.clamp(value.pan_recent),
             pan_second: ParameterId::PanSecond.clamp(value.pan_second),
             pan_bass: ParameterId::PanBass.clamp(value.pan_bass),
+            pan_echo: ParameterId::PanEcho.clamp(value.pan_echo),
             formant_rate: ParameterId::FormantRate.clamp(value.formant_rate),
             formant_depth: ParameterId::FormantDepth.clamp(value.formant_depth),
+            groove_sensitivity: ParameterId::GrooveSensitivity.clamp(value.groove_sensitivity),
+            groove_phase_pull: ParameterId::GroovePhasePull.clamp(value.groove_phase_pull),
+            groove_click_level: ParameterId::GrooveClickLevel.clamp(value.groove_click_level),
+            groove_click_enabled: value.groove_click_enabled,
+            groove_auto_lock: value.groove_auto_lock,
             support_muted: squawk_engine::support_part_mask(value.support_muted),
             support_solo: squawk_engine::support_part_mask(value.support_solo),
+            handpan_muted: value.handpan_muted,
+            handpan_solo: value.handpan_solo,
             keyboard_rows_set_place: value.keyboard_rows_set_place,
             midi_assignments,
         }
@@ -429,7 +514,18 @@ impl SettingsStore {
                 ParameterId::SupportMotion => data.support_motion = clamped,
                 ParameterId::SupportFade => data.support_fade = clamped,
                 ParameterId::ReverbHandpan => data.reverb_handpan = clamped,
-                ParameterId::ReverbSupport => data.reverb_support = clamped,
+                ParameterId::ReverbSupport => {
+                    data.reverb_support = clamped;
+                    data.reverb_ding = Some(clamped);
+                    data.reverb_recent = Some(clamped);
+                    data.reverb_second = Some(clamped);
+                    data.reverb_bass = Some(clamped);
+                }
+                ParameterId::ReverbDing => data.reverb_ding = Some(clamped),
+                ParameterId::ReverbRecent => data.reverb_recent = Some(clamped),
+                ParameterId::ReverbSecond => data.reverb_second = Some(clamped),
+                ParameterId::ReverbBass => data.reverb_bass = Some(clamped),
+                ParameterId::ReverbEcho => data.reverb_echo = clamped,
                 ParameterId::ReverbDecay => data.reverb_decay = clamped,
                 ParameterId::ReverbTone => data.reverb_tone = clamped,
                 ParameterId::DingShape => data.ding_shape = clamped,
@@ -449,15 +545,36 @@ impl SettingsStore {
                 ParameterId::MixSecond => data.mix_second = clamped,
                 ParameterId::MixBass => data.mix_bass = clamped,
                 ParameterId::MixTaps => data.mix_taps = clamped,
-                ParameterId::EchoFeedback => data.echo_feedback = clamped,
+                ParameterId::DecoDensity => data.deco_density = clamped,
+                ParameterId::DecoLagBeats => data.deco_lag_beats = clamped,
                 ParameterId::PanHandpan => data.pan_handpan = clamped,
                 ParameterId::PanDing => data.pan_ding = clamped,
                 ParameterId::PanRecent => data.pan_recent = clamped,
                 ParameterId::PanSecond => data.pan_second = clamped,
                 ParameterId::PanBass => data.pan_bass = clamped,
+                ParameterId::PanEcho => data.pan_echo = clamped,
                 ParameterId::FormantRate => data.formant_rate = clamped,
                 ParameterId::FormantDepth => data.formant_depth = clamped,
+                ParameterId::GrooveSensitivity => data.groove_sensitivity = clamped,
+                ParameterId::GroovePhasePull => data.groove_phase_pull = clamped,
+                ParameterId::GrooveClickLevel => data.groove_click_level = clamped,
             }
+        }
+        self.persist_current_state()
+    }
+
+    pub(crate) fn update_groove_click_enabled(&self, enabled: bool) -> Result<()> {
+        {
+            let mut data = self.state.lock();
+            data.groove_click_enabled = enabled;
+        }
+        self.persist_current_state()
+    }
+
+    pub(crate) fn update_groove_auto_lock(&self, enabled: bool) -> Result<()> {
+        {
+            let mut data = self.state.lock();
+            data.groove_auto_lock = enabled;
         }
         self.persist_current_state()
     }
@@ -480,11 +597,28 @@ impl SettingsStore {
         self.persist_current_state()
     }
 
+    pub(crate) fn update_echo_instrument(&self, instrument: u8) -> Result<()> {
+        {
+            let mut data = self.state.lock();
+            data.echo_instrument = crate::EchoInstrument::from_u8(instrument).as_u8();
+        }
+        self.persist_current_state()
+    }
+
     pub(crate) fn update_support_parts(&self, muted: [bool; 5], solo: [bool; 5]) -> Result<()> {
         {
             let mut data = self.state.lock();
             data.support_muted = muted;
             data.support_solo = solo;
+        }
+        self.persist_current_state()
+    }
+
+    pub(crate) fn update_handpan_mute_solo(&self, muted: bool, solo: bool) -> Result<()> {
+        {
+            let mut data = self.state.lock();
+            data.handpan_muted = muted;
+            data.handpan_solo = solo;
         }
         self.persist_current_state()
     }
@@ -566,8 +700,14 @@ impl SettingsStore {
             data.support_fade = crate::DEFAULT_SUPPORT_FADE;
             data.reverb_handpan = crate::DEFAULT_REVERB_HANDPAN;
             data.reverb_support = crate::DEFAULT_REVERB_SUPPORT;
+            data.reverb_ding = Some(crate::DEFAULT_REVERB_DING);
+            data.reverb_recent = Some(crate::DEFAULT_REVERB_RECENT);
+            data.reverb_second = Some(crate::DEFAULT_REVERB_SECOND);
+            data.reverb_bass = Some(crate::DEFAULT_REVERB_BASS);
+            data.reverb_echo = crate::DEFAULT_REVERB_ECHO;
             data.reverb_decay = crate::DEFAULT_REVERB_DECAY;
             data.reverb_tone = crate::DEFAULT_REVERB_TONE;
+            data.echo_instrument = crate::DEFAULT_ECHO_INSTRUMENT;
             data.ding_wash = default_ding_wash();
             data.ding_shape = crate::DEFAULT_DING_SHAPE;
             data.ding_spread = crate::DEFAULT_DING_SPREAD;
@@ -586,16 +726,26 @@ impl SettingsStore {
             data.mix_second = crate::DEFAULT_MIX_LEVEL;
             data.mix_bass = crate::DEFAULT_MIX_LEVEL;
             data.mix_taps = crate::DEFAULT_MIX_LEVEL;
-            data.echo_feedback = crate::DEFAULT_ECHO_FEEDBACK;
+            data.deco_density = crate::DEFAULT_DECO_DENSITY;
+            data.deco_lag_beats = crate::DEFAULT_DECO_LAG_BEATS;
+            data.echo_feedback = None;
             data.pan_handpan = crate::DEFAULT_PAN;
             data.pan_ding = crate::DEFAULT_PAN;
             data.pan_recent = crate::DEFAULT_PAN;
             data.pan_second = crate::DEFAULT_PAN;
             data.pan_bass = crate::DEFAULT_PAN;
+            data.pan_echo = crate::DEFAULT_PAN;
             data.formant_rate = crate::DEFAULT_FORMANT_RATE;
             data.formant_depth = crate::DEFAULT_FORMANT_DEPTH;
+            data.groove_sensitivity = crate::DEFAULT_GROOVE_SENSITIVITY;
+            data.groove_phase_pull = crate::DEFAULT_GROOVE_PHASE_PULL;
+            data.groove_click_level = crate::DEFAULT_GROOVE_CLICK_LEVEL;
+            data.groove_click_enabled = crate::DEFAULT_GROOVE_CLICK_ENABLED;
+            data.groove_auto_lock = crate::DEFAULT_GROOVE_AUTO_LOCK;
             data.support_muted = default_support_part_flags();
             data.support_solo = default_support_part_flags();
+            data.handpan_muted = false;
+            data.handpan_solo = false;
             data.keyboard_rows_set_place = default_keyboard_rows_set_place();
         }
         self.persist_current_state()
@@ -789,6 +939,14 @@ fn default_reverb_support() -> f32 {
     crate::DEFAULT_REVERB_SUPPORT
 }
 
+fn default_reverb_echo() -> f32 {
+    crate::DEFAULT_REVERB_ECHO
+}
+
+fn default_echo_instrument() -> u8 {
+    crate::DEFAULT_ECHO_INSTRUMENT
+}
+
 fn default_reverb_decay() -> f32 {
     crate::DEFAULT_REVERB_DECAY
 }
@@ -837,8 +995,12 @@ fn default_mix_level() -> f32 {
     crate::DEFAULT_MIX_LEVEL
 }
 
-fn default_echo_feedback() -> f32 {
-    crate::DEFAULT_ECHO_FEEDBACK
+fn default_deco_density() -> f32 {
+    crate::DEFAULT_DECO_DENSITY
+}
+
+fn default_deco_lag_beats() -> f32 {
+    crate::DEFAULT_DECO_LAG_BEATS
 }
 
 fn default_pan() -> f32 {
@@ -851,6 +1013,26 @@ fn default_formant_rate() -> f32 {
 
 fn default_formant_depth() -> f32 {
     crate::DEFAULT_FORMANT_DEPTH
+}
+
+fn default_groove_sensitivity() -> f32 {
+    crate::DEFAULT_GROOVE_SENSITIVITY
+}
+
+fn default_groove_phase_pull() -> f32 {
+    crate::DEFAULT_GROOVE_PHASE_PULL
+}
+
+fn default_groove_click_level() -> f32 {
+    crate::DEFAULT_GROOVE_CLICK_LEVEL
+}
+
+fn default_groove_click_enabled() -> bool {
+    crate::DEFAULT_GROOVE_CLICK_ENABLED
+}
+
+fn default_groove_auto_lock() -> bool {
+    crate::DEFAULT_GROOVE_AUTO_LOCK
 }
 
 fn default_support_part_flags() -> [bool; 5] {

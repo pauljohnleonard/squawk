@@ -12,10 +12,13 @@ use midir::{Ignore, MidiInput};
 use parking_lot::Mutex;
 
 use squawk_engine::{
+    Bells, DECO_DENSITY_RANGE, DECO_LAG_BEATS_RANGE, DEFAULT_BELLS_OCTAVE,
     DEFAULT_BREATH_AUTO_LEVEL as ENGINE_DEFAULT_BREATH_AUTO_LEVEL,
     DEFAULT_BREATH_FEEDBACK as ENGINE_DEFAULT_BREATH_FEEDBACK,
     DEFAULT_BREATH_NOISE_CUTOFF_HZ as ENGINE_DEFAULT_BREATH_NOISE_CUTOFF_HZ,
     DEFAULT_BREATH_PRESSURE as ENGINE_DEFAULT_BREATH_PRESSURE,
+    DEFAULT_DECO_DENSITY as ENGINE_DEFAULT_DECO_DENSITY,
+    DEFAULT_DECO_LAG_BEATS as ENGINE_DEFAULT_DECO_LAG_BEATS,
     DEFAULT_DING_BRIGHTNESS as ENGINE_DEFAULT_DING_BRIGHTNESS,
     DEFAULT_DING_FORMANT_1 as ENGINE_DEFAULT_DING_FORMANT_1,
     DEFAULT_DING_FORMANT_2 as ENGINE_DEFAULT_DING_FORMANT_2,
@@ -25,10 +28,13 @@ use squawk_engine::{
     DEFAULT_DING_SPREAD as ENGINE_DEFAULT_DING_SPREAD,
     DEFAULT_DING_STRINGS as ENGINE_DEFAULT_DING_STRINGS,
     DEFAULT_DING_WASH as ENGINE_DEFAULT_DING_WASH,
-    DEFAULT_ECHO_FEEDBACK as ENGINE_DEFAULT_ECHO_FEEDBACK,
     DEFAULT_EXCITATION_GAIN as ENGINE_DEFAULT_EXCITATION_GAIN,
     DEFAULT_FORMANT_DEPTH as ENGINE_DEFAULT_FORMANT_DEPTH,
     DEFAULT_FORMANT_RATE as ENGINE_DEFAULT_FORMANT_RATE,
+    DEFAULT_GROOVE_AUTO_LOCK as ENGINE_DEFAULT_GROOVE_AUTO_LOCK,
+    DEFAULT_GROOVE_CLICK_LEVEL as ENGINE_DEFAULT_GROOVE_CLICK_LEVEL,
+    DEFAULT_GROOVE_PHASE_PULL as ENGINE_DEFAULT_GROOVE_PHASE_PULL,
+    DEFAULT_GROOVE_SENSITIVITY as ENGINE_DEFAULT_GROOVE_SENSITIVITY,
     DEFAULT_HANDPAN_COUPLING as ENGINE_DEFAULT_HANDPAN_COUPLING,
     DEFAULT_HANDPAN_DECAY as ENGINE_DEFAULT_HANDPAN_DECAY,
     DEFAULT_HANDPAN_DETUNE_CENTS as ENGINE_DEFAULT_HANDPAN_DETUNE_CENTS,
@@ -45,8 +51,13 @@ use squawk_engine::{
     DEFAULT_MIX_LEVEL as ENGINE_DEFAULT_MIX_LEVEL,
     DEFAULT_OUTPUT_GAIN as ENGINE_DEFAULT_OUTPUT_GAIN, DEFAULT_PAN as ENGINE_DEFAULT_PAN,
     DEFAULT_POSITION_COUPLING as ENGINE_DEFAULT_POSITION_COUPLING,
+    DEFAULT_REVERB_BASS as ENGINE_DEFAULT_REVERB_BASS,
     DEFAULT_REVERB_DECAY as ENGINE_DEFAULT_REVERB_DECAY,
+    DEFAULT_REVERB_DING as ENGINE_DEFAULT_REVERB_DING,
+    DEFAULT_REVERB_ECHO as ENGINE_DEFAULT_REVERB_ECHO,
     DEFAULT_REVERB_HANDPAN as ENGINE_DEFAULT_REVERB_HANDPAN,
+    DEFAULT_REVERB_RECENT as ENGINE_DEFAULT_REVERB_RECENT,
+    DEFAULT_REVERB_SECOND as ENGINE_DEFAULT_REVERB_SECOND,
     DEFAULT_REVERB_SUPPORT as ENGINE_DEFAULT_REVERB_SUPPORT,
     DEFAULT_REVERB_TONE as ENGINE_DEFAULT_REVERB_TONE,
     DEFAULT_SUPPORT_DRIFT as ENGINE_DEFAULT_SUPPORT_DRIFT,
@@ -58,15 +69,17 @@ use squawk_engine::{
     DEFAULT_SUPPORT_WIDTH as ENGINE_DEFAULT_SUPPORT_WIDTH,
     DEFAULT_VELOCITY_COUPLING as ENGINE_DEFAULT_VELOCITY_COUPLING, DING_BRIGHTNESS_RANGE,
     DING_FORMANT_RANGE, DING_RESONANCE_RANGE, DING_SHAPE_RANGE, DING_SPREAD_RANGE,
-    DING_STRINGS_RANGE, ECHO_FEEDBACK_RANGE, Echo, Engine, EngineParams, ExciterMode,
-    FORMANT_DEPTH_RANGE, FORMANT_RATE_RANGE, HANDPAN_COUPLING_RANGE, HANDPAN_DECAY_RANGE,
-    HANDPAN_DETUNE_CENTS_RANGE, HANDPAN_DING_MAX as ENGINE_HANDPAN_DING_MAX,
+    DING_STRINGS_RANGE, Decorations, Engine, EngineParams, ExciterMode, FORMANT_DEPTH_RANGE,
+    FORMANT_RATE_RANGE, GROOVE_CLICK_LEVEL_RANGE, GROOVE_PHASE_PULL_RANGE,
+    GROOVE_SENSITIVITY_RANGE, GrooveStatus, GrooveTracker, HANDPAN_COUPLING_RANGE,
+    HANDPAN_DECAY_RANGE, HANDPAN_DETUNE_CENTS_RANGE, HANDPAN_DING_MAX as ENGINE_HANDPAN_DING_MAX,
     HANDPAN_DING_MIN as ENGINE_HANDPAN_DING_MIN, HANDPAN_GLIDE_RANGE, HANDPAN_HIT_RANGE,
     HANDPAN_PARTIAL_RANGE, HANDPAN_SCALE_COUNT as ENGINE_HANDPAN_SCALE_COUNT, Handpan,
-    MIX_LEVEL_RANGE, PAN_RANGE, REVERB_DECAY_RANGE, REVERB_HANDPAN_RANGE, REVERB_SUPPORT_RANGE,
-    REVERB_TONE_RANGE, Reverb, SUPPORT_DRIFT_RANGE, SUPPORT_FADE_RANGE, SUPPORT_LEVEL_RANGE,
-    SUPPORT_MOTION_RANGE, SUPPORT_PULSE_RANGE, SUPPORT_WANDER_RANGE, SUPPORT_WIDTH_RANGE, Support,
-    stereo_pan,
+    MIX_LEVEL_RANGE, PAN_RANGE, PlayMemory, REVERB_BASS_RANGE, REVERB_DECAY_RANGE,
+    REVERB_DING_RANGE, REVERB_ECHO_RANGE, REVERB_HANDPAN_RANGE, REVERB_RECENT_RANGE,
+    REVERB_SECOND_RANGE, REVERB_SUPPORT_RANGE, REVERB_TONE_RANGE, Reverb, SUPPORT_DRIFT_RANGE,
+    SUPPORT_FADE_RANGE, SUPPORT_LEVEL_RANGE, SUPPORT_MOTION_RANGE, SUPPORT_PULSE_RANGE,
+    SUPPORT_WANDER_RANGE, SUPPORT_WIDTH_RANGE, StrikeVoice, Support, stereo_pan,
 };
 
 use settings::SettingsStore;
@@ -121,6 +134,11 @@ pub(crate) const DEFAULT_SUPPORT_MOTION: f32 = ENGINE_DEFAULT_SUPPORT_MOTION;
 pub(crate) const DEFAULT_SUPPORT_FADE: f32 = ENGINE_DEFAULT_SUPPORT_FADE;
 pub(crate) const DEFAULT_REVERB_HANDPAN: f32 = ENGINE_DEFAULT_REVERB_HANDPAN;
 pub(crate) const DEFAULT_REVERB_SUPPORT: f32 = ENGINE_DEFAULT_REVERB_SUPPORT;
+pub(crate) const DEFAULT_REVERB_DING: f32 = ENGINE_DEFAULT_REVERB_DING;
+pub(crate) const DEFAULT_REVERB_RECENT: f32 = ENGINE_DEFAULT_REVERB_RECENT;
+pub(crate) const DEFAULT_REVERB_SECOND: f32 = ENGINE_DEFAULT_REVERB_SECOND;
+pub(crate) const DEFAULT_REVERB_BASS: f32 = ENGINE_DEFAULT_REVERB_BASS;
+pub(crate) const DEFAULT_REVERB_ECHO: f32 = ENGINE_DEFAULT_REVERB_ECHO;
 pub(crate) const DEFAULT_REVERB_DECAY: f32 = ENGINE_DEFAULT_REVERB_DECAY;
 pub(crate) const DEFAULT_REVERB_TONE: f32 = ENGINE_DEFAULT_REVERB_TONE;
 pub(crate) const DEFAULT_DING_WASH: u8 = ENGINE_DEFAULT_DING_WASH;
@@ -133,10 +151,20 @@ pub(crate) const DEFAULT_DING_FORMANT_2: f32 = ENGINE_DEFAULT_DING_FORMANT_2;
 pub(crate) const DEFAULT_DING_FORMANT_3: f32 = ENGINE_DEFAULT_DING_FORMANT_3;
 pub(crate) const DEFAULT_DING_RESONANCE: f32 = ENGINE_DEFAULT_DING_RESONANCE;
 pub(crate) const DEFAULT_MIX_LEVEL: f32 = ENGINE_DEFAULT_MIX_LEVEL;
-pub(crate) const DEFAULT_ECHO_FEEDBACK: f32 = ENGINE_DEFAULT_ECHO_FEEDBACK;
+pub(crate) const DEFAULT_DECO_DENSITY: f32 = ENGINE_DEFAULT_DECO_DENSITY;
+pub(crate) const DEFAULT_DECO_LAG_BEATS: f32 = ENGINE_DEFAULT_DECO_LAG_BEATS;
 pub(crate) const DEFAULT_PAN: f32 = ENGINE_DEFAULT_PAN;
 pub(crate) const DEFAULT_FORMANT_RATE: f32 = ENGINE_DEFAULT_FORMANT_RATE;
 pub(crate) const DEFAULT_FORMANT_DEPTH: f32 = ENGINE_DEFAULT_FORMANT_DEPTH;
+pub(crate) const DEFAULT_GROOVE_SENSITIVITY: f32 = ENGINE_DEFAULT_GROOVE_SENSITIVITY;
+pub(crate) const DEFAULT_GROOVE_PHASE_PULL: f32 = ENGINE_DEFAULT_GROOVE_PHASE_PULL;
+pub(crate) const DEFAULT_GROOVE_CLICK_LEVEL: f32 = ENGINE_DEFAULT_GROOVE_CLICK_LEVEL;
+pub(crate) const DEFAULT_GROOVE_CLICK_ENABLED: bool = true;
+pub(crate) const DEFAULT_GROOVE_AUTO_LOCK: bool = ENGINE_DEFAULT_GROOVE_AUTO_LOCK;
+const GROOVE_LOCK_CMD_NONE: u8 = 0;
+const GROOVE_LOCK_CMD_LOCK: u8 = 1;
+const GROOVE_LOCK_CMD_UNLOCK: u8 = 2;
+pub(crate) const GROOVE_IOI_CAP: usize = 12;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Instrument {
@@ -156,6 +184,28 @@ impl Instrument {
         }
     }
 }
+
+/// Strike voice used for delayed Echo hits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EchoInstrument {
+    Handpan = 0,
+    Bells = 1,
+}
+
+impl EchoInstrument {
+    pub(crate) fn as_u8(self) -> u8 {
+        self as u8
+    }
+
+    pub(crate) fn from_u8(value: u8) -> Self {
+        match value {
+            0 => EchoInstrument::Handpan,
+            _ => EchoInstrument::Bells,
+        }
+    }
+}
+
+pub(crate) const DEFAULT_ECHO_INSTRUMENT: u8 = EchoInstrument::Bells as u8;
 const STRIKE_QUEUE_LEN: usize = 16;
 const PEAK_HALF_LIFE_S: f32 = 0.5;
 const PEAK_DECAY_TAU: f32 = PEAK_HALF_LIFE_S / core::f32::consts::LN_2;
@@ -206,10 +256,18 @@ struct ControlBlock {
     support_fade_bits: AtomicU32,
     reverb_handpan_bits: AtomicU32,
     reverb_support_bits: AtomicU32,
+    reverb_ding_bits: AtomicU32,
+    reverb_recent_bits: AtomicU32,
+    reverb_second_bits: AtomicU32,
+    reverb_bass_bits: AtomicU32,
+    reverb_echo_bits: AtomicU32,
     reverb_decay_bits: AtomicU32,
     reverb_tone_bits: AtomicU32,
+    echo_instrument: AtomicU8,
     support_muted: AtomicU8,
     support_solo: AtomicU8,
+    handpan_muted: AtomicBool,
+    handpan_solo: AtomicBool,
     ding_wash: AtomicU8,
     ding_shape_bits: AtomicU32,
     ding_spread_bits: AtomicU32,
@@ -228,14 +286,29 @@ struct ControlBlock {
     mix_second_bits: AtomicU32,
     mix_bass_bits: AtomicU32,
     mix_taps_bits: AtomicU32,
-    echo_feedback_bits: AtomicU32,
+    deco_density_bits: AtomicU32,
+    deco_lag_beats_bits: AtomicU32,
     pan_handpan_bits: AtomicU32,
     pan_ding_bits: AtomicU32,
     pan_recent_bits: AtomicU32,
     pan_second_bits: AtomicU32,
     pan_bass_bits: AtomicU32,
+    pan_echo_bits: AtomicU32,
     formant_rate_bits: AtomicU32,
     formant_depth_bits: AtomicU32,
+    groove_sensitivity_bits: AtomicU32,
+    groove_phase_pull_bits: AtomicU32,
+    groove_click_level_bits: AtomicU32,
+    groove_click_enabled: AtomicBool,
+    groove_auto_lock: AtomicBool,
+    groove_lock_cmd: AtomicU8,
+    groove_bpm_bits: AtomicU32,
+    groove_confidence_bits: AtomicU32,
+    groove_phase_bits: AtomicU32,
+    groove_status: AtomicU8,
+    groove_locked: AtomicBool,
+    groove_ioi_ms: [AtomicU32; GROOVE_IOI_CAP],
+    groove_ioi_count: AtomicU8,
     strike_notes: [AtomicU8; STRIKE_QUEUE_LEN],
     strike_amps: [AtomicU32; STRIKE_QUEUE_LEN],
     strike_places: [AtomicU32; STRIKE_QUEUE_LEN],
@@ -288,10 +361,18 @@ impl ControlBlock {
             support_fade_bits: AtomicU32::new(DEFAULT_SUPPORT_FADE.to_bits()),
             reverb_handpan_bits: AtomicU32::new(DEFAULT_REVERB_HANDPAN.to_bits()),
             reverb_support_bits: AtomicU32::new(DEFAULT_REVERB_SUPPORT.to_bits()),
+            reverb_ding_bits: AtomicU32::new(DEFAULT_REVERB_DING.to_bits()),
+            reverb_recent_bits: AtomicU32::new(DEFAULT_REVERB_RECENT.to_bits()),
+            reverb_second_bits: AtomicU32::new(DEFAULT_REVERB_SECOND.to_bits()),
+            reverb_bass_bits: AtomicU32::new(DEFAULT_REVERB_BASS.to_bits()),
+            reverb_echo_bits: AtomicU32::new(DEFAULT_REVERB_ECHO.to_bits()),
             reverb_decay_bits: AtomicU32::new(DEFAULT_REVERB_DECAY.to_bits()),
             reverb_tone_bits: AtomicU32::new(DEFAULT_REVERB_TONE.to_bits()),
+            echo_instrument: AtomicU8::new(DEFAULT_ECHO_INSTRUMENT),
             support_muted: AtomicU8::new(0),
             support_solo: AtomicU8::new(0),
+            handpan_muted: AtomicBool::new(false),
+            handpan_solo: AtomicBool::new(false),
             ding_wash: AtomicU8::new(DEFAULT_DING_WASH),
             ding_shape_bits: AtomicU32::new(DEFAULT_DING_SHAPE.to_bits()),
             ding_spread_bits: AtomicU32::new(DEFAULT_DING_SPREAD.to_bits()),
@@ -310,14 +391,29 @@ impl ControlBlock {
             mix_second_bits: AtomicU32::new(DEFAULT_MIX_LEVEL.to_bits()),
             mix_bass_bits: AtomicU32::new(DEFAULT_MIX_LEVEL.to_bits()),
             mix_taps_bits: AtomicU32::new(DEFAULT_MIX_LEVEL.to_bits()),
-            echo_feedback_bits: AtomicU32::new(DEFAULT_ECHO_FEEDBACK.to_bits()),
+            deco_density_bits: AtomicU32::new(DEFAULT_DECO_DENSITY.to_bits()),
+            deco_lag_beats_bits: AtomicU32::new(DEFAULT_DECO_LAG_BEATS.to_bits()),
             pan_handpan_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
             pan_ding_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
             pan_recent_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
             pan_second_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
             pan_bass_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
+            pan_echo_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
             formant_rate_bits: AtomicU32::new(DEFAULT_FORMANT_RATE.to_bits()),
             formant_depth_bits: AtomicU32::new(DEFAULT_FORMANT_DEPTH.to_bits()),
+            groove_sensitivity_bits: AtomicU32::new(DEFAULT_GROOVE_SENSITIVITY.to_bits()),
+            groove_phase_pull_bits: AtomicU32::new(DEFAULT_GROOVE_PHASE_PULL.to_bits()),
+            groove_click_level_bits: AtomicU32::new(DEFAULT_GROOVE_CLICK_LEVEL.to_bits()),
+            groove_click_enabled: AtomicBool::new(DEFAULT_GROOVE_CLICK_ENABLED),
+            groove_auto_lock: AtomicBool::new(DEFAULT_GROOVE_AUTO_LOCK),
+            groove_lock_cmd: AtomicU8::new(GROOVE_LOCK_CMD_NONE),
+            groove_bpm_bits: AtomicU32::new(75.0f32.to_bits()),
+            groove_confidence_bits: AtomicU32::new(0.0f32.to_bits()),
+            groove_phase_bits: AtomicU32::new(0.0f32.to_bits()),
+            groove_status: AtomicU8::new(0),
+            groove_locked: AtomicBool::new(false),
+            groove_ioi_ms: std::array::from_fn(|_| AtomicU32::new(0)),
+            groove_ioi_count: AtomicU8::new(0),
             strike_notes: std::array::from_fn(|_| AtomicU8::new(0)),
             strike_amps: std::array::from_fn(|_| AtomicU32::new(0)),
             strike_places: std::array::from_fn(|_| AtomicU32::new(0)),
@@ -382,7 +478,6 @@ impl ControlBlock {
             handpan_higher_decay: f32::from_bits(
                 self.handpan_higher_decay_bits.load(Ordering::Relaxed),
             ),
-            support_level: f32::from_bits(self.support_level_bits.load(Ordering::Relaxed)),
             support_pulse: f32::from_bits(self.support_pulse_bits.load(Ordering::Relaxed)),
             support_width: f32::from_bits(self.support_width_bits.load(Ordering::Relaxed)),
             support_wander: f32::from_bits(self.support_wander_bits.load(Ordering::Relaxed)),
@@ -390,11 +485,18 @@ impl ControlBlock {
             support_motion: f32::from_bits(self.support_motion_bits.load(Ordering::Relaxed)),
             support_fade: f32::from_bits(self.support_fade_bits.load(Ordering::Relaxed)),
             reverb_handpan: f32::from_bits(self.reverb_handpan_bits.load(Ordering::Relaxed)),
-            reverb_support: f32::from_bits(self.reverb_support_bits.load(Ordering::Relaxed)),
+            reverb_ding: f32::from_bits(self.reverb_ding_bits.load(Ordering::Relaxed)),
+            reverb_recent: f32::from_bits(self.reverb_recent_bits.load(Ordering::Relaxed)),
+            reverb_second: f32::from_bits(self.reverb_second_bits.load(Ordering::Relaxed)),
+            reverb_bass: f32::from_bits(self.reverb_bass_bits.load(Ordering::Relaxed)),
+            reverb_echo: f32::from_bits(self.reverb_echo_bits.load(Ordering::Relaxed)),
             reverb_decay: f32::from_bits(self.reverb_decay_bits.load(Ordering::Relaxed)),
             reverb_tone: f32::from_bits(self.reverb_tone_bits.load(Ordering::Relaxed)),
+            echo_instrument: self.echo_instrument.load(Ordering::Relaxed),
             support_muted: self.support_muted.load(Ordering::Relaxed),
             support_solo: self.support_solo.load(Ordering::Relaxed),
+            handpan_muted: self.handpan_muted.load(Ordering::Relaxed),
+            handpan_solo: self.handpan_solo.load(Ordering::Relaxed),
             ding_wash: self.ding_wash.load(Ordering::Relaxed),
             ding_shape: f32::from_bits(self.ding_shape_bits.load(Ordering::Relaxed)),
             ding_spread: f32::from_bits(self.ding_spread_bits.load(Ordering::Relaxed)),
@@ -412,14 +514,103 @@ impl ControlBlock {
             mix_second: f32::from_bits(self.mix_second_bits.load(Ordering::Relaxed)),
             mix_bass: f32::from_bits(self.mix_bass_bits.load(Ordering::Relaxed)),
             mix_taps: f32::from_bits(self.mix_taps_bits.load(Ordering::Relaxed)),
-            echo_feedback: f32::from_bits(self.echo_feedback_bits.load(Ordering::Relaxed)),
+            deco_density: f32::from_bits(self.deco_density_bits.load(Ordering::Relaxed)),
+            deco_lag_beats: f32::from_bits(self.deco_lag_beats_bits.load(Ordering::Relaxed)),
             pan_handpan: f32::from_bits(self.pan_handpan_bits.load(Ordering::Relaxed)),
             pan_ding: f32::from_bits(self.pan_ding_bits.load(Ordering::Relaxed)),
             pan_recent: f32::from_bits(self.pan_recent_bits.load(Ordering::Relaxed)),
             pan_second: f32::from_bits(self.pan_second_bits.load(Ordering::Relaxed)),
             pan_bass: f32::from_bits(self.pan_bass_bits.load(Ordering::Relaxed)),
+            pan_echo: f32::from_bits(self.pan_echo_bits.load(Ordering::Relaxed)),
             formant_rate: f32::from_bits(self.formant_rate_bits.load(Ordering::Relaxed)),
             formant_depth: f32::from_bits(self.formant_depth_bits.load(Ordering::Relaxed)),
+            groove_sensitivity: f32::from_bits(
+                self.groove_sensitivity_bits.load(Ordering::Relaxed),
+            ),
+            groove_phase_pull: f32::from_bits(self.groove_phase_pull_bits.load(Ordering::Relaxed)),
+            groove_click_level: f32::from_bits(
+                self.groove_click_level_bits.load(Ordering::Relaxed),
+            ),
+            groove_click_enabled: self.groove_click_enabled.load(Ordering::Relaxed),
+            groove_auto_lock: self.groove_auto_lock.load(Ordering::Relaxed),
+            groove_lock_cmd: self
+                .groove_lock_cmd
+                .swap(GROOVE_LOCK_CMD_NONE, Ordering::Relaxed),
+        }
+    }
+
+    pub(crate) fn echo_instrument(&self) -> u8 {
+        self.echo_instrument.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_echo_instrument_u8(&self, instrument: u8) {
+        self.echo_instrument.store(
+            EchoInstrument::from_u8(instrument).as_u8(),
+            Ordering::Relaxed,
+        );
+    }
+
+    pub(crate) fn groove_click_enabled(&self) -> bool {
+        self.groove_click_enabled.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_groove_click_enabled(&self, enabled: bool) {
+        self.groove_click_enabled.store(enabled, Ordering::Relaxed);
+    }
+
+    pub(crate) fn groove_auto_lock(&self) -> bool {
+        self.groove_auto_lock.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_groove_auto_lock(&self, enabled: bool) {
+        self.groove_auto_lock.store(enabled, Ordering::Relaxed);
+    }
+
+    pub(crate) fn request_groove_lock(&self) {
+        self.groove_lock_cmd
+            .store(GROOVE_LOCK_CMD_LOCK, Ordering::Relaxed);
+    }
+
+    pub(crate) fn request_groove_unlock(&self) {
+        self.groove_lock_cmd
+            .store(GROOVE_LOCK_CMD_UNLOCK, Ordering::Relaxed);
+    }
+
+    pub(crate) fn groove_view(&self) -> GrooveView {
+        let count = self.groove_ioi_count.load(Ordering::Relaxed) as usize;
+        let mut iois_ms = [0.0; GROOVE_IOI_CAP];
+        for (index, slot) in iois_ms
+            .iter_mut()
+            .enumerate()
+            .take(count.min(GROOVE_IOI_CAP))
+        {
+            *slot = f32::from_bits(self.groove_ioi_ms[index].load(Ordering::Relaxed));
+        }
+        GrooveView {
+            bpm: f32::from_bits(self.groove_bpm_bits.load(Ordering::Relaxed)),
+            confidence: f32::from_bits(self.groove_confidence_bits.load(Ordering::Relaxed)),
+            phase: f32::from_bits(self.groove_phase_bits.load(Ordering::Relaxed)),
+            status: groove_status_from_u8(self.groove_status.load(Ordering::Relaxed)),
+            locked: self.groove_locked.load(Ordering::Relaxed),
+            iois_ms,
+            ioi_count: count.min(GROOVE_IOI_CAP),
+        }
+    }
+
+    fn publish_groove(&self, snap: &squawk_engine::GrooveSnapshot) {
+        self.groove_bpm_bits
+            .store(snap.bpm.to_bits(), Ordering::Relaxed);
+        self.groove_confidence_bits
+            .store(snap.confidence.to_bits(), Ordering::Relaxed);
+        self.groove_phase_bits
+            .store(snap.phase.to_bits(), Ordering::Relaxed);
+        self.groove_status
+            .store(groove_status_as_u8(snap.status), Ordering::Relaxed);
+        self.groove_locked.store(snap.locked, Ordering::Relaxed);
+        let count = snap.ioi_count.min(GROOVE_IOI_CAP);
+        self.groove_ioi_count.store(count as u8, Ordering::Relaxed);
+        for index in 0..count {
+            self.groove_ioi_ms[index].store(snap.iois_ms[index].to_bits(), Ordering::Relaxed);
         }
     }
 
@@ -443,6 +634,19 @@ impl ControlBlock {
     pub(crate) fn set_support_parts(&self, muted: u8, solo: u8) {
         self.support_muted.store(muted, Ordering::Relaxed);
         self.support_solo.store(solo, Ordering::Relaxed);
+    }
+
+    pub(crate) fn handpan_muted(&self) -> bool {
+        self.handpan_muted.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn handpan_solo(&self) -> bool {
+        self.handpan_solo.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_handpan_mute_solo(&self, muted: bool, solo: bool) {
+        self.handpan_muted.store(muted, Ordering::Relaxed);
+        self.handpan_solo.store(solo, Ordering::Relaxed);
     }
 
     pub(crate) fn instrument(&self) -> u8 {
@@ -737,6 +941,21 @@ impl ControlBlock {
             ParameterId::ReverbSupport => {
                 f32::from_bits(self.reverb_support_bits.load(Ordering::Relaxed))
             }
+            ParameterId::ReverbDing => {
+                f32::from_bits(self.reverb_ding_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::ReverbRecent => {
+                f32::from_bits(self.reverb_recent_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::ReverbSecond => {
+                f32::from_bits(self.reverb_second_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::ReverbBass => {
+                f32::from_bits(self.reverb_bass_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::ReverbEcho => {
+                f32::from_bits(self.reverb_echo_bits.load(Ordering::Relaxed))
+            }
             ParameterId::ReverbDecay => {
                 f32::from_bits(self.reverb_decay_bits.load(Ordering::Relaxed))
             }
@@ -776,8 +995,11 @@ impl ControlBlock {
             ParameterId::MixSecond => f32::from_bits(self.mix_second_bits.load(Ordering::Relaxed)),
             ParameterId::MixBass => f32::from_bits(self.mix_bass_bits.load(Ordering::Relaxed)),
             ParameterId::MixTaps => f32::from_bits(self.mix_taps_bits.load(Ordering::Relaxed)),
-            ParameterId::EchoFeedback => {
-                f32::from_bits(self.echo_feedback_bits.load(Ordering::Relaxed))
+            ParameterId::DecoDensity => {
+                f32::from_bits(self.deco_density_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::DecoLagBeats => {
+                f32::from_bits(self.deco_lag_beats_bits.load(Ordering::Relaxed))
             }
             ParameterId::PanHandpan => {
                 f32::from_bits(self.pan_handpan_bits.load(Ordering::Relaxed))
@@ -786,11 +1008,21 @@ impl ControlBlock {
             ParameterId::PanRecent => f32::from_bits(self.pan_recent_bits.load(Ordering::Relaxed)),
             ParameterId::PanSecond => f32::from_bits(self.pan_second_bits.load(Ordering::Relaxed)),
             ParameterId::PanBass => f32::from_bits(self.pan_bass_bits.load(Ordering::Relaxed)),
+            ParameterId::PanEcho => f32::from_bits(self.pan_echo_bits.load(Ordering::Relaxed)),
             ParameterId::FormantRate => {
                 f32::from_bits(self.formant_rate_bits.load(Ordering::Relaxed))
             }
             ParameterId::FormantDepth => {
                 f32::from_bits(self.formant_depth_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::GrooveSensitivity => {
+                f32::from_bits(self.groove_sensitivity_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::GroovePhasePull => {
+                f32::from_bits(self.groove_phase_pull_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::GrooveClickLevel => {
+                f32::from_bits(self.groove_click_level_bits.load(Ordering::Relaxed))
             }
         }
     }
@@ -861,8 +1093,29 @@ impl ControlBlock {
             ParameterId::ReverbHandpan => self
                 .reverb_handpan_bits
                 .store(value.to_bits(), Ordering::Relaxed),
-            ParameterId::ReverbSupport => self
-                .reverb_support_bits
+            ParameterId::ReverbSupport => {
+                // Old MIDI maps still land here; keep the four voice sends in step.
+                let bits = value.to_bits();
+                self.reverb_support_bits.store(bits, Ordering::Relaxed);
+                self.reverb_ding_bits.store(bits, Ordering::Relaxed);
+                self.reverb_recent_bits.store(bits, Ordering::Relaxed);
+                self.reverb_second_bits.store(bits, Ordering::Relaxed);
+                self.reverb_bass_bits.store(bits, Ordering::Relaxed);
+            }
+            ParameterId::ReverbDing => self
+                .reverb_ding_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::ReverbRecent => self
+                .reverb_recent_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::ReverbSecond => self
+                .reverb_second_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::ReverbBass => self
+                .reverb_bass_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::ReverbEcho => self
+                .reverb_echo_bits
                 .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::ReverbDecay => self
                 .reverb_decay_bits
@@ -909,8 +1162,11 @@ impl ControlBlock {
                 .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::MixBass => self.mix_bass_bits.store(value.to_bits(), Ordering::Relaxed),
             ParameterId::MixTaps => self.mix_taps_bits.store(value.to_bits(), Ordering::Relaxed),
-            ParameterId::EchoFeedback => self
-                .echo_feedback_bits
+            ParameterId::DecoDensity => self
+                .deco_density_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::DecoLagBeats => self
+                .deco_lag_beats_bits
                 .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::PanHandpan => self
                 .pan_handpan_bits
@@ -923,11 +1179,21 @@ impl ControlBlock {
                 .pan_second_bits
                 .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::PanBass => self.pan_bass_bits.store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::PanEcho => self.pan_echo_bits.store(value.to_bits(), Ordering::Relaxed),
             ParameterId::FormantRate => self
                 .formant_rate_bits
                 .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::FormantDepth => self
                 .formant_depth_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::GrooveSensitivity => self
+                .groove_sensitivity_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::GroovePhasePull => self
+                .groove_phase_pull_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::GrooveClickLevel => self
+                .groove_click_level_bits
                 .store(value.to_bits(), Ordering::Relaxed),
         }
     }
@@ -970,9 +1236,16 @@ impl ControlBlock {
         self.set_parameter_value(ParameterId::SupportFade, DEFAULT_SUPPORT_FADE);
         self.set_parameter_value(ParameterId::ReverbHandpan, DEFAULT_REVERB_HANDPAN);
         self.set_parameter_value(ParameterId::ReverbSupport, DEFAULT_REVERB_SUPPORT);
+        self.set_parameter_value(ParameterId::ReverbDing, DEFAULT_REVERB_DING);
+        self.set_parameter_value(ParameterId::ReverbRecent, DEFAULT_REVERB_RECENT);
+        self.set_parameter_value(ParameterId::ReverbSecond, DEFAULT_REVERB_SECOND);
+        self.set_parameter_value(ParameterId::ReverbBass, DEFAULT_REVERB_BASS);
+        self.set_parameter_value(ParameterId::ReverbEcho, DEFAULT_REVERB_ECHO);
         self.set_parameter_value(ParameterId::ReverbDecay, DEFAULT_REVERB_DECAY);
         self.set_parameter_value(ParameterId::ReverbTone, DEFAULT_REVERB_TONE);
+        self.set_echo_instrument_u8(DEFAULT_ECHO_INSTRUMENT);
         self.set_support_parts(0, 0);
+        self.set_handpan_mute_solo(false, false);
         self.set_ding_wash(DEFAULT_DING_WASH);
         self.set_parameter_value(ParameterId::DingShape, DEFAULT_DING_SHAPE);
         self.set_parameter_value(ParameterId::DingSpread, DEFAULT_DING_SPREAD);
@@ -991,19 +1264,56 @@ impl ControlBlock {
         self.set_parameter_value(ParameterId::MixSecond, DEFAULT_MIX_LEVEL);
         self.set_parameter_value(ParameterId::MixBass, DEFAULT_MIX_LEVEL);
         self.set_parameter_value(ParameterId::MixTaps, DEFAULT_MIX_LEVEL);
-        self.set_parameter_value(ParameterId::EchoFeedback, DEFAULT_ECHO_FEEDBACK);
+        self.set_parameter_value(ParameterId::DecoDensity, DEFAULT_DECO_DENSITY);
+        self.set_parameter_value(ParameterId::DecoLagBeats, DEFAULT_DECO_LAG_BEATS);
         self.set_parameter_value(ParameterId::PanHandpan, DEFAULT_PAN);
         self.set_parameter_value(ParameterId::PanDing, DEFAULT_PAN);
         self.set_parameter_value(ParameterId::PanRecent, DEFAULT_PAN);
         self.set_parameter_value(ParameterId::PanSecond, DEFAULT_PAN);
         self.set_parameter_value(ParameterId::PanBass, DEFAULT_PAN);
+        self.set_parameter_value(ParameterId::PanEcho, DEFAULT_PAN);
         self.set_parameter_value(ParameterId::FormantRate, DEFAULT_FORMANT_RATE);
         self.set_parameter_value(ParameterId::FormantDepth, DEFAULT_FORMANT_DEPTH);
+        self.set_parameter_value(ParameterId::GrooveSensitivity, DEFAULT_GROOVE_SENSITIVITY);
+        self.set_parameter_value(ParameterId::GroovePhasePull, DEFAULT_GROOVE_PHASE_PULL);
+        self.set_parameter_value(ParameterId::GrooveClickLevel, DEFAULT_GROOVE_CLICK_LEVEL);
+        self.set_groove_click_enabled(DEFAULT_GROOVE_CLICK_ENABLED);
+        self.set_groove_auto_lock(DEFAULT_GROOVE_AUTO_LOCK);
+        self.request_groove_unlock();
         self.set_handpan_layout(
             DEFAULT_HANDPAN_SCALE,
             DEFAULT_HANDPAN_DING,
             DEFAULT_HANDPAN_TUNING,
         );
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct GrooveView {
+    pub bpm: f32,
+    pub confidence: f32,
+    pub phase: f32,
+    pub status: GrooveStatus,
+    pub locked: bool,
+    pub iois_ms: [f32; GROOVE_IOI_CAP],
+    pub ioi_count: usize,
+}
+
+fn groove_status_as_u8(status: GrooveStatus) -> u8 {
+    match status {
+        GrooveStatus::Listening => 0,
+        GrooveStatus::Locking => 1,
+        GrooveStatus::Locked => 2,
+        GrooveStatus::Lost => 3,
+    }
+}
+
+fn groove_status_from_u8(value: u8) -> GrooveStatus {
+    match value {
+        1 => GrooveStatus::Locking,
+        2 => GrooveStatus::Locked,
+        3 => GrooveStatus::Lost,
+        _ => GrooveStatus::Listening,
     }
 }
 
@@ -1038,7 +1348,6 @@ struct ControlSnapshot {
     handpan_octave: f32,
     handpan_fifth: f32,
     handpan_higher_decay: f32,
-    support_level: f32,
     support_pulse: f32,
     support_width: f32,
     support_wander: f32,
@@ -1046,11 +1355,18 @@ struct ControlSnapshot {
     support_motion: f32,
     support_fade: f32,
     reverb_handpan: f32,
-    reverb_support: f32,
+    reverb_ding: f32,
+    reverb_recent: f32,
+    reverb_second: f32,
+    reverb_bass: f32,
+    reverb_echo: f32,
     reverb_decay: f32,
     reverb_tone: f32,
+    echo_instrument: u8,
     support_muted: u8,
     support_solo: u8,
+    handpan_muted: bool,
+    handpan_solo: bool,
     ding_wash: u8,
     ding_shape: f32,
     ding_spread: f32,
@@ -1068,14 +1384,22 @@ struct ControlSnapshot {
     mix_second: f32,
     mix_bass: f32,
     mix_taps: f32,
-    echo_feedback: f32,
+    deco_density: f32,
+    deco_lag_beats: f32,
     pan_handpan: f32,
     pan_ding: f32,
     pan_recent: f32,
     pan_second: f32,
     pan_bass: f32,
+    pan_echo: f32,
     formant_rate: f32,
     formant_depth: f32,
+    groove_sensitivity: f32,
+    groove_phase_pull: f32,
+    groove_click_level: f32,
+    groove_click_enabled: bool,
+    groove_auto_lock: bool,
+    groove_lock_cmd: u8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1110,6 +1434,11 @@ pub enum ParameterId {
     SupportFade,
     ReverbHandpan,
     ReverbSupport,
+    ReverbDing,
+    ReverbRecent,
+    ReverbSecond,
+    ReverbBass,
+    ReverbEcho,
     ReverbDecay,
     ReverbTone,
     DingShape,
@@ -1129,14 +1458,19 @@ pub enum ParameterId {
     MixSecond,
     MixBass,
     MixTaps,
-    EchoFeedback,
+    DecoDensity,
+    DecoLagBeats,
     PanHandpan,
     PanDing,
     PanRecent,
     PanSecond,
     PanBass,
+    PanEcho,
     FormantRate,
     FormantDepth,
+    GrooveSensitivity,
+    GroovePhasePull,
+    GrooveClickLevel,
 }
 
 const MODAL_PARAMETERS: [ParameterId; 12] = [
@@ -1166,22 +1500,16 @@ const HANDPAN_PARAMETERS: [ParameterId; 9] = [
     ParameterId::HandpanHigherDecay,
 ];
 
-const ACCOMPANIMENT_PARAMETERS: [ParameterId; 7] = [
-    ParameterId::SupportPulse,
+const ANALYSIS_PARAMETERS: [ParameterId; 2] = [ParameterId::SupportPulse, ParameterId::SupportFade];
+
+const BAND_MOTION_PARAMETERS: [ParameterId; 4] = [
     ParameterId::SupportWidth,
     ParameterId::SupportWander,
     ParameterId::SupportDrift,
     ParameterId::SupportMotion,
-    ParameterId::SupportFade,
-    ParameterId::EchoFeedback,
 ];
 
-const REVERB_PARAMETERS: [ParameterId; 4] = [
-    ParameterId::ReverbHandpan,
-    ParameterId::ReverbSupport,
-    ParameterId::ReverbDecay,
-    ParameterId::ReverbTone,
-];
+const REVERB_PARAMETERS: [ParameterId; 2] = [ParameterId::ReverbDecay, ParameterId::ReverbTone];
 
 const DING_WASH_PARAMETERS: [ParameterId; 3] = [
     ParameterId::DingShape,
@@ -1256,7 +1584,8 @@ impl ParameterId {
             ParameterId::MixSecond => 46,
             ParameterId::MixBass => 47,
             ParameterId::MixTaps => 48,
-            ParameterId::EchoFeedback => 49,
+            ParameterId::DecoDensity => 49,
+            ParameterId::DecoLagBeats => 66,
             ParameterId::PanHandpan => 50,
             ParameterId::PanDing => 51,
             ParameterId::PanRecent => 52,
@@ -1264,6 +1593,15 @@ impl ParameterId {
             ParameterId::PanBass => 54,
             ParameterId::FormantRate => 55,
             ParameterId::FormantDepth => 56,
+            ParameterId::ReverbDing => 57,
+            ParameterId::ReverbRecent => 58,
+            ParameterId::ReverbSecond => 59,
+            ParameterId::ReverbBass => 60,
+            ParameterId::PanEcho => 61,
+            ParameterId::ReverbEcho => 62,
+            ParameterId::GrooveSensitivity => 63,
+            ParameterId::GroovePhasePull => 64,
+            ParameterId::GrooveClickLevel => 65,
         }
     }
 
@@ -1318,7 +1656,8 @@ impl ParameterId {
             46 => Some(ParameterId::MixSecond),
             47 => Some(ParameterId::MixBass),
             48 => Some(ParameterId::MixTaps),
-            49 => Some(ParameterId::EchoFeedback),
+            49 => Some(ParameterId::DecoDensity),
+            66 => Some(ParameterId::DecoLagBeats),
             50 => Some(ParameterId::PanHandpan),
             51 => Some(ParameterId::PanDing),
             52 => Some(ParameterId::PanRecent),
@@ -1326,6 +1665,15 @@ impl ParameterId {
             54 => Some(ParameterId::PanBass),
             55 => Some(ParameterId::FormantRate),
             56 => Some(ParameterId::FormantDepth),
+            57 => Some(ParameterId::ReverbDing),
+            58 => Some(ParameterId::ReverbRecent),
+            59 => Some(ParameterId::ReverbSecond),
+            60 => Some(ParameterId::ReverbBass),
+            61 => Some(ParameterId::PanEcho),
+            62 => Some(ParameterId::ReverbEcho),
+            63 => Some(ParameterId::GrooveSensitivity),
+            64 => Some(ParameterId::GroovePhasePull),
+            65 => Some(ParameterId::GrooveClickLevel),
             _ => None,
         }
     }
@@ -1338,8 +1686,12 @@ impl ParameterId {
         &HANDPAN_PARAMETERS
     }
 
-    pub(crate) fn accompaniment() -> &'static [ParameterId] {
-        &ACCOMPANIMENT_PARAMETERS
+    pub(crate) fn analysis() -> &'static [ParameterId] {
+        &ANALYSIS_PARAMETERS
+    }
+
+    pub(crate) fn band_motion() -> &'static [ParameterId] {
+        &BAND_MOTION_PARAMETERS
     }
 
     pub(crate) fn reverb() -> &'static [ParameterId] {
@@ -1382,7 +1734,7 @@ impl ParameterId {
             ParameterId::HandpanFifth => "Fifth",
             ParameterId::HandpanHigherDecay => "Higher decay",
             ParameterId::SupportLevel => "Support level",
-            ParameterId::SupportPulse => "Support pulse",
+            ParameterId::SupportPulse => "Pulse",
             ParameterId::SupportWidth => "Width",
             ParameterId::SupportWander => "Wander",
             ParameterId::SupportDrift => "Drift",
@@ -1390,6 +1742,11 @@ impl ParameterId {
             ParameterId::SupportFade => "Fade",
             ParameterId::ReverbHandpan => "Handpan send",
             ParameterId::ReverbSupport => "Accompaniment send",
+            ParameterId::ReverbDing => "Ding send",
+            ParameterId::ReverbRecent => "Recent send",
+            ParameterId::ReverbSecond => "Second send",
+            ParameterId::ReverbBass => "Bass send",
+            ParameterId::ReverbEcho => "Echo send",
             ParameterId::ReverbDecay => "Decay",
             ParameterId::ReverbTone => "Tone",
             ParameterId::DingShape => "Shape",
@@ -1408,15 +1765,20 @@ impl ParameterId {
             ParameterId::MixRecent => "Recent",
             ParameterId::MixSecond => "Second",
             ParameterId::MixBass => "Bass",
-            ParameterId::MixTaps => "Echo",
-            ParameterId::EchoFeedback => "Feedback",
+            ParameterId::MixTaps => "Level",
+            ParameterId::DecoDensity => "Density",
+            ParameterId::DecoLagBeats => "Lag",
             ParameterId::PanHandpan => "Handpan pan",
             ParameterId::PanDing => "Ding pan",
             ParameterId::PanRecent => "Recent pan",
             ParameterId::PanSecond => "Second pan",
             ParameterId::PanBass => "Bass pan",
+            ParameterId::PanEcho => "Echo pan",
             ParameterId::FormantRate => "Rate",
             ParameterId::FormantDepth => "Depth",
+            ParameterId::GrooveSensitivity => "Sensitivity",
+            ParameterId::GroovePhasePull => "Phase pull",
+            ParameterId::GrooveClickLevel => "Click level",
         }
     }
 
@@ -1452,6 +1814,11 @@ impl ParameterId {
             ParameterId::SupportFade => SUPPORT_FADE_RANGE,
             ParameterId::ReverbHandpan => REVERB_HANDPAN_RANGE,
             ParameterId::ReverbSupport => REVERB_SUPPORT_RANGE,
+            ParameterId::ReverbDing => REVERB_DING_RANGE,
+            ParameterId::ReverbRecent => REVERB_RECENT_RANGE,
+            ParameterId::ReverbSecond => REVERB_SECOND_RANGE,
+            ParameterId::ReverbBass => REVERB_BASS_RANGE,
+            ParameterId::ReverbEcho => REVERB_ECHO_RANGE,
             ParameterId::ReverbDecay => REVERB_DECAY_RANGE,
             ParameterId::ReverbTone => REVERB_TONE_RANGE,
             ParameterId::DingShape => DING_SHAPE_RANGE,
@@ -1471,14 +1838,19 @@ impl ParameterId {
             | ParameterId::MixSecond
             | ParameterId::MixBass
             | ParameterId::MixTaps => MIX_LEVEL_RANGE,
-            ParameterId::EchoFeedback => ECHO_FEEDBACK_RANGE,
+            ParameterId::DecoDensity => DECO_DENSITY_RANGE,
+            ParameterId::DecoLagBeats => DECO_LAG_BEATS_RANGE,
             ParameterId::PanHandpan
             | ParameterId::PanDing
             | ParameterId::PanRecent
             | ParameterId::PanSecond
-            | ParameterId::PanBass => PAN_RANGE,
+            | ParameterId::PanBass
+            | ParameterId::PanEcho => PAN_RANGE,
             ParameterId::FormantRate => FORMANT_RATE_RANGE,
             ParameterId::FormantDepth => FORMANT_DEPTH_RANGE,
+            ParameterId::GrooveSensitivity => GROOVE_SENSITIVITY_RANGE,
+            ParameterId::GroovePhasePull => GROOVE_PHASE_PULL_RANGE,
+            ParameterId::GrooveClickLevel => GROOVE_CLICK_LEVEL_RANGE,
         }
     }
 
@@ -1540,8 +1912,13 @@ impl ParameterId {
             ParameterId::SupportDrift => format!("{value:.0} cents"),
             ParameterId::SupportMotion => format!("{value:.2}×"),
             ParameterId::SupportFade => format!("{value:.1} s"),
-            ParameterId::ReverbHandpan => format!("{value:.2}"),
-            ParameterId::ReverbSupport => format!("{value:.2}"),
+            ParameterId::ReverbHandpan
+            | ParameterId::ReverbSupport
+            | ParameterId::ReverbDing
+            | ParameterId::ReverbRecent
+            | ParameterId::ReverbSecond
+            | ParameterId::ReverbBass
+            | ParameterId::ReverbEcho => format!("{value:.2}"),
             ParameterId::ReverbDecay => format!("{value:.1} s"),
             ParameterId::ReverbTone => format!("{value:.2}"),
             ParameterId::DingShape => format!("{value:.2}"),
@@ -1561,14 +1938,19 @@ impl ParameterId {
             | ParameterId::MixSecond
             | ParameterId::MixBass
             | ParameterId::MixTaps
-            | ParameterId::EchoFeedback => format!("{value:.2}"),
+            | ParameterId::DecoDensity => format!("{value:.2}"),
+            ParameterId::DecoLagBeats => format!("{value:.1} beats"),
             ParameterId::PanHandpan
             | ParameterId::PanDing
             | ParameterId::PanRecent
             | ParameterId::PanSecond
-            | ParameterId::PanBass => format_pan(value),
+            | ParameterId::PanBass
+            | ParameterId::PanEcho => format_pan(value),
             ParameterId::FormantRate => format!("{value:.2} Hz"),
             ParameterId::FormantDepth => format!("{value:.2} oct"),
+            ParameterId::GrooveSensitivity
+            | ParameterId::GroovePhasePull
+            | ParameterId::GrooveClickLevel => format!("{value:.2}"),
         }
     }
 
@@ -1610,6 +1992,11 @@ impl ParameterId {
             ParameterId::SupportFade => "support_fade",
             ParameterId::ReverbHandpan => "reverb_handpan",
             ParameterId::ReverbSupport => "reverb_support",
+            ParameterId::ReverbDing => "reverb_ding",
+            ParameterId::ReverbRecent => "reverb_recent",
+            ParameterId::ReverbSecond => "reverb_second",
+            ParameterId::ReverbBass => "reverb_bass",
+            ParameterId::ReverbEcho => "reverb_echo",
             ParameterId::ReverbDecay => "reverb_decay",
             ParameterId::ReverbTone => "reverb_tone",
             ParameterId::DingShape => "ding_shape",
@@ -1629,14 +2016,19 @@ impl ParameterId {
             ParameterId::MixSecond => "mix_second",
             ParameterId::MixBass => "mix_bass",
             ParameterId::MixTaps => "mix_taps",
-            ParameterId::EchoFeedback => "echo_feedback",
+            ParameterId::DecoDensity => "deco_density",
+            ParameterId::DecoLagBeats => "deco_lag_beats",
             ParameterId::PanHandpan => "pan_handpan",
             ParameterId::PanDing => "pan_ding",
             ParameterId::PanRecent => "pan_recent",
             ParameterId::PanSecond => "pan_second",
             ParameterId::PanBass => "pan_bass",
+            ParameterId::PanEcho => "pan_echo",
             ParameterId::FormantRate => "formant_rate",
             ParameterId::FormantDepth => "formant_depth",
+            ParameterId::GrooveSensitivity => "groove_sensitivity",
+            ParameterId::GroovePhasePull => "groove_phase_pull",
+            ParameterId::GrooveClickLevel => "groove_click_level",
         }
     }
 
@@ -1672,6 +2064,11 @@ impl ParameterId {
             "support_fade" => Some(ParameterId::SupportFade),
             "reverb_handpan" => Some(ParameterId::ReverbHandpan),
             "reverb_support" => Some(ParameterId::ReverbSupport),
+            "reverb_ding" => Some(ParameterId::ReverbDing),
+            "reverb_recent" => Some(ParameterId::ReverbRecent),
+            "reverb_second" => Some(ParameterId::ReverbSecond),
+            "reverb_bass" => Some(ParameterId::ReverbBass),
+            "reverb_echo" => Some(ParameterId::ReverbEcho),
             "reverb_decay" => Some(ParameterId::ReverbDecay),
             "reverb_tone" => Some(ParameterId::ReverbTone),
             "ding_shape" => Some(ParameterId::DingShape),
@@ -1691,14 +2088,19 @@ impl ParameterId {
             "mix_second" => Some(ParameterId::MixSecond),
             "mix_bass" => Some(ParameterId::MixBass),
             "mix_taps" => Some(ParameterId::MixTaps),
-            "echo_feedback" => Some(ParameterId::EchoFeedback),
+            "echo_feedback" | "deco_density" => Some(ParameterId::DecoDensity),
+            "deco_lag_beats" => Some(ParameterId::DecoLagBeats),
             "pan_handpan" => Some(ParameterId::PanHandpan),
             "pan_ding" => Some(ParameterId::PanDing),
             "pan_recent" => Some(ParameterId::PanRecent),
             "pan_second" => Some(ParameterId::PanSecond),
             "pan_bass" => Some(ParameterId::PanBass),
+            "pan_echo" => Some(ParameterId::PanEcho),
             "formant_rate" => Some(ParameterId::FormantRate),
             "formant_depth" => Some(ParameterId::FormantDepth),
+            "groove_sensitivity" => Some(ParameterId::GrooveSensitivity),
+            "groove_phase_pull" => Some(ParameterId::GroovePhasePull),
+            "groove_click_level" => Some(ParameterId::GrooveClickLevel),
             _ => None,
         }
     }
@@ -1963,9 +2365,16 @@ fn main() -> anyhow::Result<()> {
     control.set_parameter_value(ParameterId::SupportFade, snapshot.support_fade);
     control.set_parameter_value(ParameterId::ReverbHandpan, snapshot.reverb_handpan);
     control.set_parameter_value(ParameterId::ReverbSupport, snapshot.reverb_support);
+    control.set_parameter_value(ParameterId::ReverbDing, snapshot.reverb_ding);
+    control.set_parameter_value(ParameterId::ReverbRecent, snapshot.reverb_recent);
+    control.set_parameter_value(ParameterId::ReverbSecond, snapshot.reverb_second);
+    control.set_parameter_value(ParameterId::ReverbBass, snapshot.reverb_bass);
+    control.set_parameter_value(ParameterId::ReverbEcho, snapshot.reverb_echo);
     control.set_parameter_value(ParameterId::ReverbDecay, snapshot.reverb_decay);
     control.set_parameter_value(ParameterId::ReverbTone, snapshot.reverb_tone);
+    control.set_echo_instrument_u8(snapshot.echo_instrument);
     control.set_support_parts(snapshot.support_muted, snapshot.support_solo);
+    control.set_handpan_mute_solo(snapshot.handpan_muted, snapshot.handpan_solo);
     control.set_ding_wash(snapshot.ding_wash);
     control.set_parameter_value(ParameterId::DingShape, snapshot.ding_shape);
     control.set_parameter_value(ParameterId::DingSpread, snapshot.ding_spread);
@@ -1984,14 +2393,21 @@ fn main() -> anyhow::Result<()> {
     control.set_parameter_value(ParameterId::MixSecond, snapshot.mix_second);
     control.set_parameter_value(ParameterId::MixBass, snapshot.mix_bass);
     control.set_parameter_value(ParameterId::MixTaps, snapshot.mix_taps);
-    control.set_parameter_value(ParameterId::EchoFeedback, snapshot.echo_feedback);
+    control.set_parameter_value(ParameterId::DecoDensity, snapshot.deco_density);
+    control.set_parameter_value(ParameterId::DecoLagBeats, snapshot.deco_lag_beats);
     control.set_parameter_value(ParameterId::PanHandpan, snapshot.pan_handpan);
     control.set_parameter_value(ParameterId::PanDing, snapshot.pan_ding);
     control.set_parameter_value(ParameterId::PanRecent, snapshot.pan_recent);
     control.set_parameter_value(ParameterId::PanSecond, snapshot.pan_second);
     control.set_parameter_value(ParameterId::PanBass, snapshot.pan_bass);
+    control.set_parameter_value(ParameterId::PanEcho, snapshot.pan_echo);
     control.set_parameter_value(ParameterId::FormantRate, snapshot.formant_rate);
     control.set_parameter_value(ParameterId::FormantDepth, snapshot.formant_depth);
+    control.set_parameter_value(ParameterId::GrooveSensitivity, snapshot.groove_sensitivity);
+    control.set_parameter_value(ParameterId::GroovePhasePull, snapshot.groove_phase_pull);
+    control.set_parameter_value(ParameterId::GrooveClickLevel, snapshot.groove_click_level);
+    control.set_groove_click_enabled(snapshot.groove_click_enabled);
+    control.set_groove_auto_lock(snapshot.groove_auto_lock);
 
     let midi_learn = Arc::new(MidiLearnState::new());
     midi_learn.load_assignments(&snapshot.midi_assignments);
@@ -2290,8 +2706,11 @@ where
     let try_build = |cfg: &cpal::StreamConfig| {
         let mut engine = Engine::new(cfg.sample_rate.0 as f32, params);
         let mut handpan = Handpan::new(cfg.sample_rate.0 as f32);
+        let mut bells = Bells::new(cfg.sample_rate.0 as f32);
         let mut support = Support::new(cfg.sample_rate.0 as f32);
-        let mut echo = Echo::new(cfg.sample_rate.0 as f32);
+        let mut groove = GrooveTracker::new(cfg.sample_rate.0 as f32);
+        let mut play_memory = PlayMemory::new(cfg.sample_rate.0 as f32);
+        let mut decorations = Decorations::new(cfg.sample_rate.0 as f32);
         let mut reverb = Reverb::new(cfg.sample_rate.0 as f32);
         let control = control.clone();
         let audio_tap = audio_tap.clone();
@@ -2326,7 +2745,8 @@ where
                     handpan.set_octave(snapshot.handpan_octave);
                     handpan.set_fifth(snapshot.handpan_fifth);
                     handpan.set_higher_decay(snapshot.handpan_higher_decay);
-                    support.set_level(snapshot.support_level);
+                    // Bake today's Support level so part fader 1 keeps the same balance.
+                    support.set_level(DEFAULT_SUPPORT_LEVEL);
                     support.set_pulse(snapshot.support_pulse);
                     support.set_width(snapshot.support_width);
                     support.set_wander(snapshot.support_wander);
@@ -2334,6 +2754,7 @@ where
                     support.set_motion(snapshot.support_motion);
                     support.set_fade(snapshot.support_fade);
                     support.set_parts(snapshot.support_muted, snapshot.support_solo);
+                    support.set_foreign_solo(snapshot.handpan_solo);
                     support.set_ding_wash(snapshot.ding_wash);
                     support.set_ding_shape(snapshot.ding_shape);
                     support.set_ding_spread(snapshot.ding_spread);
@@ -2352,11 +2773,26 @@ where
                     support.set_part_level(2, snapshot.mix_second);
                     support.set_part_level(3, snapshot.mix_bass);
                     support.set_part_level(4, snapshot.mix_taps);
-                    echo.set_feedback(snapshot.echo_feedback);
+                    decorations.set_density(snapshot.deco_density);
+                    decorations.set_lag_beats(snapshot.deco_lag_beats);
                     reverb.set_handpan_send(snapshot.reverb_handpan);
-                    reverb.set_support_send(snapshot.reverb_support);
+                    reverb.set_ding_send(snapshot.reverb_ding);
+                    reverb.set_recent_send(snapshot.reverb_recent);
+                    reverb.set_second_send(snapshot.reverb_second);
+                    reverb.set_bass_send(snapshot.reverb_bass);
+                    reverb.set_echo_send(snapshot.reverb_echo);
                     reverb.set_decay(snapshot.reverb_decay);
                     reverb.set_tone(snapshot.reverb_tone);
+                    groove.set_sensitivity(snapshot.groove_sensitivity);
+                    groove.set_phase_pull(snapshot.groove_phase_pull);
+                    groove.set_click_level(snapshot.groove_click_level);
+                    groove.set_click_enabled(snapshot.groove_click_enabled);
+                    groove.set_auto_lock(snapshot.groove_auto_lock);
+                    match snapshot.groove_lock_cmd {
+                        GROOVE_LOCK_CMD_LOCK => groove.set_tempo_locked(true),
+                        GROOVE_LOCK_CMD_UNLOCK => groove.set_tempo_locked(false),
+                        _ => {}
+                    }
                     support.set_layout(
                         snapshot.handpan_scale,
                         snapshot.handpan_ding,
@@ -2366,46 +2802,90 @@ where
                         for strike in strikes.iter().take(strike_count) {
                             handpan.strike_at(strike.0, strike.1, strike.2);
                             support.hear(strike.0, strike.1);
-                            echo.record(strike.0, strike.1, strike.2);
+                            groove.hear(strike.0, strike.1);
+                            play_memory.hear(strike.0, strike.1, strike.2);
                         }
                     }
-                    let echo_gain = support.echo_gain();
-                    let mix_handpan = snapshot
-                        .mix_handpan
-                        .clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
+                    let deco_gain = support.echo_gain();
+                    let echo_voice = EchoInstrument::from_u8(snapshot.echo_instrument);
+                    let any_solo = snapshot.handpan_solo || snapshot.support_solo != 0;
+                    let mix_handpan =
+                        if snapshot.handpan_muted || (any_solo && !snapshot.handpan_solo) {
+                            0.0
+                        } else {
+                            snapshot
+                                .mix_handpan
+                                .clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1)
+                        };
                     let pan_handpan = snapshot.pan_handpan;
                     let pan_ding = snapshot.pan_ding;
                     let pan_recent = snapshot.pan_recent;
                     let pan_second = snapshot.pan_second;
                     let pan_bass = snapshot.pan_bass;
-                    write_stereo_frames::<T>(data, channels, &audio_tap, || {
-                        echo.poll(|note, amp, place| {
-                            let level = amp * echo_gain;
-                            if level > 0.0 {
-                                handpan.strike_at(note, level, place);
+                    let pan_echo = snapshot.pan_echo;
+                    let mut samples_in_block = 0u32;
+                    let peak = write_stereo_frames::<T>(data, channels, &audio_tap, || {
+                        play_memory.tick(groove.tempo_locked(), groove.period_s());
+                        let click = groove.tick();
+                        decorations.tick(&play_memory, &groove, |note, amp, place| {
+                            let level = amp * deco_gain;
+                            if level <= 0.0 {
+                                return;
+                            }
+                            match echo_voice {
+                                EchoInstrument::Bells => {
+                                    let transposed = note
+                                        .saturating_add(DEFAULT_BELLS_OCTAVE.max(0) as u8)
+                                        .min(127);
+                                    StrikeVoice::strike_at(&mut bells, transposed, level, place);
+                                }
+                                EchoInstrument::Handpan => {
+                                    handpan.strike_at(note, level, place);
+                                }
                             }
                         });
+                        samples_in_block = samples_in_block.wrapping_add(1);
+                        if samples_in_block.is_multiple_of(64) {
+                            control.publish_groove(&groove.snapshot());
+                        }
                         let hand = handpan.next_sample() * mix_handpan;
+                        let echo_sig = match echo_voice {
+                            EchoInstrument::Bells => StrikeVoice::next_sample(&mut bells),
+                            EchoInstrument::Handpan => 0.0,
+                        };
                         let parts = support.next_parts().limited();
                         let (hand_l, hand_r) = stereo_pan(pan_handpan);
                         let (ding_l, ding_r) = stereo_pan(pan_ding);
                         let (recent_l, recent_r) = stereo_pan(pan_recent);
                         let (second_l, second_r) = stereo_pan(pan_second);
                         let (bass_l, bass_r) = stereo_pan(pan_bass);
-                        let support_mono = parts.sum();
-                        let (wet_l, wet_r) = reverb.next_wet(hand, support_mono);
+                        let (echo_l, echo_r) = stereo_pan(pan_echo);
+                        let (wet_l, wet_r) = reverb.next_wet(
+                            hand,
+                            parts.ding,
+                            parts.recent,
+                            parts.second,
+                            parts.bass,
+                            echo_sig,
+                        );
                         let dry_l = hand * hand_l
                             + parts.ding * ding_l
                             + parts.recent * recent_l
                             + parts.second * second_l
-                            + parts.bass * bass_l;
+                            + parts.bass * bass_l
+                            + echo_sig * echo_l
+                            + click;
                         let dry_r = hand * hand_r
                             + parts.ding * ding_r
                             + parts.recent * recent_r
                             + parts.second * second_r
-                            + parts.bass * bass_r;
+                            + parts.bass * bass_r
+                            + echo_sig * echo_r
+                            + click;
                         (dry_l + wet_l, dry_r + wet_r)
-                    })
+                    });
+                    control.publish_groove(&groove.snapshot());
+                    peak
                 } else {
                     engine.set_exciter_mode(ExciterMode::from_u8(snapshot.exciter_mode));
                     engine.set_gate(snapshot.gate);

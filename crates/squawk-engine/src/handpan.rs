@@ -3,6 +3,7 @@
 //! already sit close in frequency.
 
 use crate::StrikeExciter;
+use crate::voice::StrikeVoice;
 
 pub const HANDPAN_LAYOUT_LABEL: &str =
     "D Kurd: Ding D3, A3 Bb3 C4 D4 E4 F4 A4. Notes keep ringing.";
@@ -568,6 +569,16 @@ impl Handpan {
         if link.closeness > worst_closeness {
             self.links[worst] = link;
         }
+    }
+}
+
+impl StrikeVoice for Handpan {
+    fn strike_at(&mut self, note: u8, amplitude: f32, place: f32) {
+        Handpan::strike_at(self, note, amplitude, place);
+    }
+
+    fn next_sample(&mut self) -> f32 {
+        Handpan::next_sample(self)
     }
 }
 

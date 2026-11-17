@@ -163,6 +163,9 @@ pub struct Support {
     muted: u8,
     /// Bit set means that part is soloed. Any solo silences the parts that are not.
     solo: u8,
+    /// True when another desk channel (e.g. Handpan) is soloed. Silences parts
+    /// that are not themselves soloed, same as a non-empty solo mask.
+    foreign_solo: bool,
     /// Level of each part relative to today's balance. 1 leaves that balance alone.
     part_level: [f32; SUPPORT_PARTS],
     /// 0 is the noise resonator. 1 is the waveshaped wash. 2 is the tambura chord.
@@ -233,6 +236,7 @@ impl Support {
             bass: mode(ding_hz * 0.5, BASS_ZETA),
             muted: 0,
             solo: 0,
+            foreign_solo: false,
             part_level: [DEFAULT_MIX_LEVEL; SUPPORT_PARTS],
             ding_wash: DEFAULT_DING_WASH,
             ding_shape: DEFAULT_DING_SHAPE,
@@ -355,6 +359,10 @@ impl Support {
         self.solo = solo & SUPPORT_PART_MASK;
     }
 
+    pub fn set_foreign_solo(&mut self, active: bool) {
+        self.foreign_solo = active;
+    }
+
     pub fn set_part_level(&mut self, part: usize, level: f32) {
         if let Some(slot) = self.part_level.get_mut(part) {
             *slot = level.clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
@@ -363,7 +371,13 @@ impl Support {
 
     /// How loud an echoed pad hit should be. Zero while Echo is muted or another part is soloed.
     pub fn echo_gain(&self) -> f32 {
-        part_gain(self.muted, self.solo, &self.part_level, 4)
+        part_gain(
+            self.muted,
+            self.solo,
+            self.foreign_solo,
+            &self.part_level,
+            4,
+        )
     }
 
     pub fn set_level(&mut self, level: f32) {
@@ -494,13 +508,19 @@ impl Support {
         let presence = self.level * self.presence;
         let body = breath * 0.55 * presence;
         SupportParts {
-            ding: ding * part_gain(self.muted, self.solo, &levels, 0) * body,
-            recent: color_a * 0.72 * part_gain(self.muted, self.solo, &levels, 1) * body,
-            second: color_b * 0.5 * part_gain(self.muted, self.solo, &levels, 2) * body,
+            ding: ding * part_gain(self.muted, self.solo, self.foreign_solo, &levels, 0) * body,
+            recent: color_a
+                * 0.72
+                * part_gain(self.muted, self.solo, self.foreign_solo, &levels, 1)
+                * body,
+            second: color_b
+                * 0.5
+                * part_gain(self.muted, self.solo, self.foreign_solo, &levels, 2)
+                * body,
             bass: self.bass.position
                 * bass_breath
                 * 0.4
-                * part_gain(self.muted, self.solo, &levels, 3)
+                * part_gain(self.muted, self.solo, self.foreign_solo, &levels, 3)
                 * presence,
         }
     }
@@ -798,14 +818,20 @@ pub fn support_part_flags(mask: u8) -> [bool; SUPPORT_PARTS] {
     std::array::from_fn(|index| (mask & (1 << index)) != 0)
 }
 
-/// Mute silences a part. A solo silences every part that is not soloed.
-/// A part that is heard plays at its own level.
-fn part_gain(muted: u8, solo: u8, levels: &[f32; SUPPORT_PARTS], part: usize) -> f32 {
+/// Mute silences a part. A solo (local or foreign) silences every part that is
+/// not itself soloed. A part that is heard plays at its own level.
+fn part_gain(
+    muted: u8,
+    solo: u8,
+    foreign_solo: bool,
+    levels: &[f32; SUPPORT_PARTS],
+    part: usize,
+) -> f32 {
     let bit = 1u8 << part;
     if (muted & bit) != 0 {
         return 0.0;
     }
-    if solo != 0 && (solo & bit) == 0 {
+    if (solo != 0 || foreign_solo) && (solo & bit) == 0 {
         return 0.0;
     }
     levels[part]
@@ -1211,19 +1237,22 @@ mod tests {
     #[test]
     fn solo_and_mute_choose_who_is_heard() {
         let unity = [1.0; SUPPORT_PARTS];
-        assert_eq!(part_gain(0, 0, &unity, 0), 1.0);
-        assert_eq!(part_gain(0, 0, &unity, 4), 1.0);
-        assert_eq!(part_gain(1, 0, &unity, 0), 0.0);
-        assert_eq!(part_gain(1, 0, &unity, 1), 1.0);
-        assert_eq!(part_gain(0, 0b1000, &unity, 0), 0.0);
-        assert_eq!(part_gain(0, 0b1000, &unity, 3), 1.0);
-        assert_eq!(part_gain(0b1000, 0b1000, &unity, 3), 0.0);
-        assert_eq!(part_gain(0, 0b1001, &unity, 0), 1.0);
-        assert_eq!(part_gain(0, 0b1001, &unity, 3), 1.0);
-        assert_eq!(part_gain(0, 0b1001, &unity, 1), 0.0);
+        assert_eq!(part_gain(0, 0, false, &unity, 0), 1.0);
+        assert_eq!(part_gain(0, 0, false, &unity, 4), 1.0);
+        assert_eq!(part_gain(1, 0, false, &unity, 0), 0.0);
+        assert_eq!(part_gain(1, 0, false, &unity, 1), 1.0);
+        assert_eq!(part_gain(0, 0b1000, false, &unity, 0), 0.0);
+        assert_eq!(part_gain(0, 0b1000, false, &unity, 3), 1.0);
+        assert_eq!(part_gain(0b1000, 0b1000, false, &unity, 3), 0.0);
+        assert_eq!(part_gain(0, 0b1001, false, &unity, 0), 1.0);
+        assert_eq!(part_gain(0, 0b1001, false, &unity, 3), 1.0);
+        assert_eq!(part_gain(0, 0b1001, false, &unity, 1), 0.0);
+        assert_eq!(part_gain(0, 0, true, &unity, 0), 0.0);
+        assert_eq!(part_gain(0, 1, true, &unity, 0), 1.0);
+        assert_eq!(part_gain(0, 1, true, &unity, 1), 0.0);
         let boosted = [2.0; SUPPORT_PARTS];
-        assert_eq!(part_gain(1, 0, &boosted, 0), 0.0);
-        assert!((part_gain(0, 0, &[0.5, 1.0, 1.0, 1.0, 1.0], 0) - 0.5).abs() < 1.0e-6);
+        assert_eq!(part_gain(1, 0, false, &boosted, 0), 0.0);
+        assert!((part_gain(0, 0, false, &[0.5, 1.0, 1.0, 1.0, 1.0], 0) - 0.5).abs() < 1.0e-6);
 
         let mut support = Support::new(48_000.0);
         support.set_level(1.0);
