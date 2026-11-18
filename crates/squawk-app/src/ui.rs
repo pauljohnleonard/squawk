@@ -378,11 +378,6 @@ impl SquawkApp {
             ui.add_space(8.0);
         }
 
-        ui.label("Following pads (Recent / Second)");
-        for param in [ParameterId::MixRecent, ParameterId::MixSecond] {
-            self.draw_parameter(ui, param, true);
-            ui.add_space(8.0);
-        }
         ui.label("Band motion");
         for &param in ParameterId::band_motion() {
             self.draw_parameter(ui, param, true);
@@ -407,6 +402,8 @@ impl SquawkApp {
                     | DeskModule::Resonator
                     | DeskModule::Waveshape
                     | DeskModule::Tambura
+                    | DeskModule::Recent
+                    | DeskModule::Second
                     | DeskModule::Bass
                     | DeskModule::Echo
                     | DeskModule::Reverb
@@ -544,7 +541,36 @@ impl SquawkApp {
     }
 
     fn draw_desk(&mut self, ui: &mut egui::Ui) {
+        if Instrument::from_u8(self.control.instrument()) == Instrument::Handpan {
+            self.draw_desk_section(ui, "Main", &[DeskModule::Handpan]);
+            self.draw_desk_section(
+                ui,
+                "Support",
+                &[
+                    DeskModule::Resonator,
+                    DeskModule::Waveshape,
+                    DeskModule::Tambura,
+                    DeskModule::Recent,
+                    DeskModule::Second,
+                    DeskModule::Bass,
+                    DeskModule::Echo,
+                ],
+            );
+            self.draw_desk_section(ui, "Effects", &[DeskModule::Reverb]);
+            return;
+        }
         for &module in self.strips() {
+            self.draw_channel_row(ui, module);
+            ui.add_space(4.0);
+        }
+    }
+
+    fn draw_desk_section(&mut self, ui: &mut egui::Ui, title: &str, modules: &[DeskModule]) {
+        ui.add_space(4.0);
+        ui.label(egui::RichText::new(title).small().strong());
+        ui.separator();
+        ui.add_space(2.0);
+        for &module in modules {
             self.draw_channel_row(ui, module);
             ui.add_space(4.0);
         }
@@ -621,6 +647,15 @@ impl SquawkApp {
                         if col.selectable_label(solo, "Solo").clicked() {
                             self.persist_handpan_mute_solo(self.control.handpan_muted(), !solo);
                         }
+                    } else if module == DeskModule::Reverb {
+                        let muted = self.control.reverb_muted();
+                        let solo = self.control.reverb_solo();
+                        if col.selectable_label(muted, "Mute").clicked() {
+                            self.persist_reverb_mute_solo(!muted, solo);
+                        }
+                        if col.selectable_label(solo, "Solo").clicked() {
+                            self.persist_reverb_mute_solo(self.control.reverb_muted(), !solo);
+                        }
                     } else if let Some(mask) = module.wash_mask() {
                         let muted = self.control.wash_muted();
                         let solo = self.control.wash_solo();
@@ -685,6 +720,13 @@ impl SquawkApp {
         self.control.set_handpan_mute_solo(muted, solo);
         if let Err(err) = self.settings.update_handpan_mute_solo(muted, solo) {
             eprintln!("Warning: Failed to persist handpan mute and solo: {err}");
+        }
+    }
+
+    fn persist_reverb_mute_solo(&self, muted: bool, solo: bool) {
+        self.control.set_reverb_mute_solo(muted, solo);
+        if let Err(err) = self.settings.update_reverb_mute_solo(muted, solo) {
+            eprintln!("Warning: Failed to persist reverb mute and solo: {err}");
         }
     }
 
@@ -1170,6 +1212,29 @@ impl SquawkApp {
             DeskModule::Resonator => self.draw_drone_voice_synth(ui, 0),
             DeskModule::Waveshape => self.draw_drone_voice_synth(ui, 1),
             DeskModule::Tambura => self.draw_drone_voice_synth(ui, 2),
+            DeskModule::Recent | DeskModule::Second => {
+                let which = if self.open_module == DeskModule::Recent {
+                    "Recent"
+                } else {
+                    "Second"
+                };
+                ui.label(format!(
+                    "{which} is a soft following band under the Root washes — it tracks recent scale degrees. Level / Pan / Mute / Solo are on this strip."
+                ));
+                ui.add_space(6.0);
+                let level = if self.open_module == DeskModule::Recent {
+                    ParameterId::MixRecent
+                } else {
+                    ParameterId::MixSecond
+                };
+                self.draw_parameter(ui, level, true);
+                ui.add_space(8.0);
+                ui.label("Band motion");
+                for &param in ParameterId::band_motion() {
+                    self.draw_parameter(ui, param, true);
+                    ui.add_space(8.0);
+                }
+            }
             DeskModule::Bass => {
                 ui.label(
                     "After four taps lock the groove, plays the root on every beat — strong on 1, softer on 2/3/4. Amount 0 turns it off.",
@@ -1880,13 +1945,17 @@ enum DeskModule {
     Resonator,
     Waveshape,
     Tambura,
+    Recent,
+    Second,
 }
 
-const HANDPAN_STRIPS: [DeskModule; 7] = [
+const HANDPAN_STRIPS: [DeskModule; 9] = [
     DeskModule::Handpan,
     DeskModule::Resonator,
     DeskModule::Waveshape,
     DeskModule::Tambura,
+    DeskModule::Recent,
+    DeskModule::Second,
     DeskModule::Bass,
     DeskModule::Echo,
     DeskModule::Reverb,
@@ -1914,6 +1983,8 @@ impl DeskModule {
             DeskModule::Resonator => "Resonator",
             DeskModule::Waveshape => "Waveshape",
             DeskModule::Tambura => "Tambura",
+            DeskModule::Recent => "Recent",
+            DeskModule::Second => "Second",
             DeskModule::Reverb => "Reverb",
             DeskModule::Modal => "Modal",
         }
@@ -1927,34 +1998,38 @@ impl DeskModule {
             DeskModule::Resonator => Some(ParameterId::MixDing),
             DeskModule::Waveshape => Some(ParameterId::MixWaveshape),
             DeskModule::Tambura => Some(ParameterId::MixTambura),
+            DeskModule::Recent => Some(ParameterId::MixRecent),
+            DeskModule::Second => Some(ParameterId::MixSecond),
             DeskModule::Modal => Some(ParameterId::OutputGain),
             DeskModule::FmBass => Some(ParameterId::FmBassLevel),
-            DeskModule::Reverb => None,
+            DeskModule::Reverb => Some(ParameterId::MixReverb),
         }
     }
 
     fn pan(self) -> Option<ParameterId> {
         match self {
             DeskModule::Handpan => Some(ParameterId::PanHandpan),
+            DeskModule::Resonator => Some(ParameterId::PanDing),
+            DeskModule::Waveshape => Some(ParameterId::PanWaveshape),
+            DeskModule::Tambura => Some(ParameterId::PanTambura),
+            DeskModule::Recent => Some(ParameterId::PanRecent),
+            DeskModule::Second => Some(ParameterId::PanSecond),
             DeskModule::Bass => Some(ParameterId::PanBass),
             DeskModule::Echo => Some(ParameterId::PanEcho),
-            DeskModule::Reverb
-            | DeskModule::Modal
-            | DeskModule::FmBass
-            | DeskModule::Bells
-            | DeskModule::Resonator
-            | DeskModule::Waveshape
-            | DeskModule::Tambura => None,
+            DeskModule::Reverb => Some(ParameterId::PanReverb),
+            DeskModule::Modal | DeskModule::FmBass | DeskModule::Bells => None,
         }
     }
 
     fn send(self) -> Option<ParameterId> {
         match self {
             DeskModule::Handpan => Some(ParameterId::ReverbHandpan),
-            // Shared pad-bus send (Root + following pads).
-            DeskModule::Resonator | DeskModule::Waveshape | DeskModule::Tambura => {
-                Some(ParameterId::ReverbDing)
-            }
+            // Shared pad-bus send (Root washes + following pads).
+            DeskModule::Resonator
+            | DeskModule::Waveshape
+            | DeskModule::Tambura
+            | DeskModule::Recent
+            | DeskModule::Second => Some(ParameterId::ReverbDing),
             DeskModule::Bass => Some(ParameterId::ReverbBass),
             DeskModule::Echo => Some(ParameterId::ReverbEcho),
             DeskModule::Reverb | DeskModule::Modal | DeskModule::FmBass | DeskModule::Bells => None,
@@ -1971,9 +2046,11 @@ impl DeskModule {
         }
     }
 
-    /// Support mute/solo bits for Bass / Echo strips.
+    /// Support mute/solo bits for Recent / Second / Bass / Echo strips.
     fn part_mask(self) -> Option<u8> {
         match self {
+            DeskModule::Recent => Some(1 << 1),
+            DeskModule::Second => Some(1 << 2),
             DeskModule::Bass => Some(1 << 3),
             DeskModule::Echo => Some(1 << 4),
             _ => None,

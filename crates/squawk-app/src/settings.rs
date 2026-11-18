@@ -190,6 +190,8 @@ struct StoredSettings {
     mix_bass: f32,
     #[serde(default = "default_mix_level")]
     mix_taps: f32,
+    #[serde(default = "default_mix_level")]
+    mix_reverb: f32,
     #[serde(default = "default_deco_density")]
     deco_density: f32,
     #[serde(default = "default_deco_lag_beats")]
@@ -202,6 +204,10 @@ struct StoredSettings {
     #[serde(default = "default_pan")]
     pan_ding: f32,
     #[serde(default = "default_pan")]
+    pan_waveshape: f32,
+    #[serde(default = "default_pan")]
+    pan_tambura: f32,
+    #[serde(default = "default_pan")]
     pan_recent: f32,
     #[serde(default = "default_pan")]
     pan_second: f32,
@@ -209,6 +215,8 @@ struct StoredSettings {
     pan_bass: f32,
     #[serde(default = "default_pan")]
     pan_echo: f32,
+    #[serde(default = "default_pan")]
+    pan_reverb: f32,
     #[serde(default = "default_formant_rate")]
     formant_rate: f32,
     #[serde(default = "default_formant_depth")]
@@ -261,6 +269,10 @@ struct StoredSettings {
     handpan_muted: bool,
     #[serde(default)]
     handpan_solo: bool,
+    #[serde(default)]
+    reverb_muted: bool,
+    #[serde(default)]
+    reverb_solo: bool,
     #[serde(default = "default_keyboard_rows_set_place")]
     keyboard_rows_set_place: bool,
     midi_cc: HashMap<String, u8>,
@@ -336,15 +348,19 @@ impl Default for StoredSettings {
             mix_second: crate::DEFAULT_MIX_LEVEL,
             mix_bass: crate::DEFAULT_MIX_LEVEL,
             mix_taps: crate::DEFAULT_MIX_LEVEL,
+            mix_reverb: crate::DEFAULT_MIX_LEVEL,
             deco_density: crate::DEFAULT_DECO_DENSITY,
             deco_lag_beats: crate::DEFAULT_DECO_LAG_BEATS,
             echo_feedback: None,
             pan_handpan: crate::DEFAULT_PAN,
             pan_ding: crate::DEFAULT_PAN,
+            pan_waveshape: crate::DEFAULT_PAN,
+            pan_tambura: crate::DEFAULT_PAN,
             pan_recent: crate::DEFAULT_PAN,
             pan_second: crate::DEFAULT_PAN,
             pan_bass: crate::DEFAULT_PAN,
             pan_echo: crate::DEFAULT_PAN,
+            pan_reverb: crate::DEFAULT_PAN,
             formant_rate: crate::DEFAULT_FORMANT_RATE,
             formant_depth: crate::DEFAULT_FORMANT_DEPTH,
             groove_sensitivity: crate::DEFAULT_GROOVE_SENSITIVITY,
@@ -371,6 +387,8 @@ impl Default for StoredSettings {
             wash_solo: 0,
             handpan_muted: false,
             handpan_solo: false,
+            reverb_muted: false,
+            reverb_solo: false,
             keyboard_rows_set_place: default_keyboard_rows_set_place(),
             midi_cc: HashMap::new(),
         }
@@ -445,14 +463,18 @@ pub(crate) struct SettingsSnapshot {
     pub mix_second: f32,
     pub mix_bass: f32,
     pub mix_taps: f32,
+    pub mix_reverb: f32,
     pub deco_density: f32,
     pub deco_lag_beats: f32,
     pub pan_handpan: f32,
     pub pan_ding: f32,
+    pub pan_waveshape: f32,
+    pub pan_tambura: f32,
     pub pan_recent: f32,
     pub pan_second: f32,
     pub pan_bass: f32,
     pub pan_echo: f32,
+    pub pan_reverb: f32,
     pub formant_rate: f32,
     pub formant_depth: f32,
     pub groove_sensitivity: f32,
@@ -478,6 +500,8 @@ pub(crate) struct SettingsSnapshot {
     pub wash_solo: u8,
     pub handpan_muted: bool,
     pub handpan_solo: bool,
+    pub reverb_muted: bool,
+    pub reverb_solo: bool,
     pub keyboard_rows_set_place: bool,
     pub midi_assignments: Vec<(ParameterId, u8)>,
 }
@@ -578,15 +602,19 @@ impl From<StoredSettings> for SettingsSnapshot {
             mix_second: ParameterId::MixSecond.clamp(value.mix_second),
             mix_bass: ParameterId::MixBass.clamp(value.mix_bass),
             mix_taps: ParameterId::MixTaps.clamp(value.mix_taps),
+            mix_reverb: ParameterId::MixReverb.clamp(value.mix_reverb),
             deco_density: ParameterId::DecoDensity
                 .clamp(value.echo_feedback.unwrap_or(value.deco_density)),
             deco_lag_beats: ParameterId::DecoLagBeats.clamp(value.deco_lag_beats),
             pan_handpan: ParameterId::PanHandpan.clamp(value.pan_handpan),
             pan_ding: ParameterId::PanDing.clamp(value.pan_ding),
+            pan_waveshape: ParameterId::PanWaveshape.clamp(value.pan_waveshape),
+            pan_tambura: ParameterId::PanTambura.clamp(value.pan_tambura),
             pan_recent: ParameterId::PanRecent.clamp(value.pan_recent),
             pan_second: ParameterId::PanSecond.clamp(value.pan_second),
             pan_bass: ParameterId::PanBass.clamp(value.pan_bass),
             pan_echo: ParameterId::PanEcho.clamp(value.pan_echo),
+            pan_reverb: ParameterId::PanReverb.clamp(value.pan_reverb),
             formant_rate: ParameterId::FormantRate.clamp(value.formant_rate),
             formant_depth: ParameterId::FormantDepth.clamp(value.formant_depth),
             groove_sensitivity: ParameterId::GrooveSensitivity.clamp(value.groove_sensitivity),
@@ -606,13 +634,15 @@ impl From<StoredSettings> for SettingsSnapshot {
             bells_index_decay: ParameterId::BellsIndexDecay.clamp(value.bells_index_decay),
             groove_click_enabled: value.groove_click_enabled,
             groove_auto_lock: value.groove_auto_lock,
-            // Drop legacy Drone mute bits (Root/Recent/Second); Bass/Echo keep 3..4.
-            support_muted: squawk_engine::support_part_mask(value.support_muted) & !0b0111,
-            support_solo: squawk_engine::support_part_mask(value.support_solo) & !0b0111,
+            // Drop legacy Root mute bit; Recent/Second/Bass/Echo stay on the desk.
+            support_muted: squawk_engine::support_part_mask(value.support_muted) & !0b0001,
+            support_solo: squawk_engine::support_part_mask(value.support_solo) & !0b0001,
             wash_muted: value.wash_muted & 0b111,
             wash_solo: value.wash_solo & 0b111,
             handpan_muted: value.handpan_muted,
             handpan_solo: value.handpan_solo,
+            reverb_muted: value.reverb_muted,
+            reverb_solo: value.reverb_solo,
             keyboard_rows_set_place: value.keyboard_rows_set_place,
             midi_assignments,
         }
@@ -710,14 +740,18 @@ impl SettingsStore {
                 ParameterId::MixSecond => data.mix_second = clamped,
                 ParameterId::MixBass => data.mix_bass = clamped,
                 ParameterId::MixTaps => data.mix_taps = clamped,
+                ParameterId::MixReverb => data.mix_reverb = clamped,
                 ParameterId::DecoDensity => data.deco_density = clamped,
                 ParameterId::DecoLagBeats => data.deco_lag_beats = clamped,
                 ParameterId::PanHandpan => data.pan_handpan = clamped,
                 ParameterId::PanDing => data.pan_ding = clamped,
+                ParameterId::PanWaveshape => data.pan_waveshape = clamped,
+                ParameterId::PanTambura => data.pan_tambura = clamped,
                 ParameterId::PanRecent => data.pan_recent = clamped,
                 ParameterId::PanSecond => data.pan_second = clamped,
                 ParameterId::PanBass => data.pan_bass = clamped,
                 ParameterId::PanEcho => data.pan_echo = clamped,
+                ParameterId::PanReverb => data.pan_reverb = clamped,
                 ParameterId::FormantRate => data.formant_rate = clamped,
                 ParameterId::FormantDepth => data.formant_depth = clamped,
                 ParameterId::GrooveSensitivity => data.groove_sensitivity = clamped,
@@ -805,6 +839,15 @@ impl SettingsStore {
             let mut data = self.state.lock();
             data.handpan_muted = muted;
             data.handpan_solo = solo;
+        }
+        self.persist_current_state()
+    }
+
+    pub(crate) fn update_reverb_mute_solo(&self, muted: bool, solo: bool) -> Result<()> {
+        {
+            let mut data = self.state.lock();
+            data.reverb_muted = muted;
+            data.reverb_solo = solo;
         }
         self.persist_current_state()
     }
@@ -970,15 +1013,19 @@ impl SettingsStore {
             data.mix_second = crate::DEFAULT_MIX_LEVEL;
             data.mix_bass = crate::DEFAULT_MIX_LEVEL;
             data.mix_taps = crate::DEFAULT_MIX_LEVEL;
+            data.mix_reverb = crate::DEFAULT_MIX_LEVEL;
             data.deco_density = crate::DEFAULT_DECO_DENSITY;
             data.deco_lag_beats = crate::DEFAULT_DECO_LAG_BEATS;
             data.echo_feedback = None;
             data.pan_handpan = crate::DEFAULT_PAN;
             data.pan_ding = crate::DEFAULT_PAN;
+            data.pan_waveshape = crate::DEFAULT_PAN;
+            data.pan_tambura = crate::DEFAULT_PAN;
             data.pan_recent = crate::DEFAULT_PAN;
             data.pan_second = crate::DEFAULT_PAN;
             data.pan_bass = crate::DEFAULT_PAN;
             data.pan_echo = crate::DEFAULT_PAN;
+            data.pan_reverb = crate::DEFAULT_PAN;
             data.formant_rate = crate::DEFAULT_FORMANT_RATE;
             data.formant_depth = crate::DEFAULT_FORMANT_DEPTH;
             data.groove_sensitivity = crate::DEFAULT_GROOVE_SENSITIVITY;
@@ -1004,6 +1051,8 @@ impl SettingsStore {
             data.wash_solo = 0;
             data.handpan_muted = false;
             data.handpan_solo = false;
+            data.reverb_muted = false;
+            data.reverb_solo = false;
             data.keyboard_rows_set_place = default_keyboard_rows_set_place();
         }
         self.persist_current_state()

@@ -556,7 +556,7 @@ impl Support {
         }
 
         let root = step_band(&mut self.drones[0], self.dt, self.glide, self.wander_glide);
-        let ding = self.step_ding(band_hz(&self.drones[0]), root);
+        let washes = self.step_ding(band_hz(&self.drones[0]), root);
         let color_a = step_band(&mut self.drones[1], self.dt, self.glide, self.wander_glide);
         let color_b = step_band(&mut self.drones[2], self.dt, self.glide, self.wander_glide);
         step(&mut self.bass, self.dt, self.glide, 0.0024);
@@ -587,8 +587,11 @@ impl Support {
         } else {
             0.0
         };
+        let root_gain = part_gain(self.muted, self.solo, self.foreign_solo, &levels, 0) * body;
         SupportParts {
-            ding: ding * part_gain(self.muted, self.solo, self.foreign_solo, &levels, 0) * body,
+            resonator: washes[0] * root_gain,
+            waveshape: washes[1] * root_gain,
+            tambura: washes[2] * root_gain,
             recent: color_a * 0.72 * recent_gain * body,
             second: color_b * 0.5 * second_gain * body,
             bass: self.bass.position
@@ -726,7 +729,8 @@ impl Support {
     }
 
     /// All three Root washes keep running and mix by `wash_level`, then share formants.
-    fn step_ding(&mut self, center_hz: f32, root: f32) -> f32 {
+    /// Returns Resonator / Waveshape / Tambura so each can be panned in the desk.
+    fn step_ding(&mut self, center_hz: f32, root: f32) -> [f32; 3] {
         let (unison, unison_buzz) = self.step_unison(center_hz);
         let (tambura, tambura_buzz) = self.step_tambura(center_hz);
         let levels = [
@@ -739,8 +743,18 @@ impl Support {
         let excite = root * (0.22 * levels[0])
             + unison_buzz * (0.12 * levels[1])
             + tambura_buzz * (0.28 * levels[2]);
-        // colour_ding's body_mix / peak_mix scale the summed paths; keep unity here.
-        self.colour_ding(body, excite, 1.0, 1.0)
+        // Shared formants on the sum (same as before); split by wash weight for stereo pan.
+        let coloured = self.colour_ding(body, excite, 1.0, 1.0);
+        let weight = levels[0] + levels[1] + levels[2];
+        if weight <= 1.0e-12 || coloured == 0.0 {
+            return [0.0; 3];
+        }
+        let inv = 1.0 / weight;
+        [
+            coloured * levels[0] * inv,
+            coloured * levels[1] * inv,
+            coloured * levels[2] * inv,
+        ]
     }
 
     /// Three sines around the Ding's moving center, through a soft shaper and a lowpass.
@@ -808,26 +822,36 @@ impl Support {
 /// One sample of the accompaniment, split so each part can be panned.
 #[derive(Clone, Copy, Default)]
 pub struct SupportParts {
-    pub ding: f32,
+    pub resonator: f32,
+    pub waveshape: f32,
+    pub tambura: f32,
     pub recent: f32,
     pub second: f32,
     pub bass: f32,
 }
 
 impl SupportParts {
+    /// Root wash bus (Resonator + Waveshape + Tambura) for the shared reverb send.
+    #[inline]
+    pub fn ding(self) -> f32 {
+        self.resonator + self.waveshape + self.tambura
+    }
+
     pub fn sum(self) -> f32 {
-        (self.ding + self.recent + self.second + self.bass).clamp(-1.0, 1.0)
+        (self.ding() + self.recent + self.second + self.bass).clamp(-1.0, 1.0)
     }
 
     /// The same parts, pulled back together when their sum would have been limited.
     pub fn limited(self) -> Self {
-        let raw = self.ding + self.recent + self.second + self.bass;
+        let raw = self.ding() + self.recent + self.second + self.bass;
         if raw.abs() <= 1.0 {
             return self;
         }
         let scale = raw.clamp(-1.0, 1.0) / raw;
         Self {
-            ding: self.ding * scale,
+            resonator: self.resonator * scale,
+            waveshape: self.waveshape * scale,
+            tambura: self.tambura * scale,
             recent: self.recent * scale,
             second: self.second * scale,
             bass: self.bass * scale,
@@ -1519,7 +1543,8 @@ mod tests {
             let mut energy = [0.0f32; 3];
             for _ in 0..24_000 {
                 let p = solo_wave.next_parts();
-                energy[0] += p.ding * p.ding;
+                let ding = p.ding();
+                energy[0] += ding * ding;
                 energy[1] += p.recent * p.recent;
                 energy[2] += p.second * p.second;
             }
@@ -1839,11 +1864,33 @@ mod tests {
     fn a_soloed_ding_is_the_only_part() {
         let mut support = ding_only(0, DEFAULT_DING_SHAPE);
         let parts = support.next_parts();
-        assert!(parts.ding.abs() > 1.0e-4, "the ding was silent");
+        assert!(parts.ding().abs() > 1.0e-4, "the ding was silent");
         assert_eq!(parts.recent, 0.0);
         assert_eq!(parts.second, 0.0);
         assert_eq!(parts.bass, 0.0);
-        assert!((parts.sum() - parts.ding.clamp(-1.0, 1.0)).abs() < 1.0e-5);
+        assert!((parts.sum() - parts.ding().clamp(-1.0, 1.0)).abs() < 1.0e-5);
+    }
+
+    #[test]
+    fn zero_wash_levels_leave_only_following_pads() {
+        let mut support = ding_only(0, DEFAULT_DING_SHAPE);
+        park_formants(&mut support);
+        support.set_wash_level(0, 0.0);
+        support.set_wash_level(1, 0.0);
+        support.set_wash_level(2, 0.0);
+        // Clear Root solo so Recent / Second can speak.
+        support.set_parts(0, 0);
+        support.set_part_level(1, 1.0);
+        support.set_part_level(2, 1.0);
+        let mut ding_e = 0.0;
+        let mut pad_e = 0.0;
+        for _ in 0..24_000 {
+            let p = support.next_parts();
+            ding_e += p.ding() * p.ding();
+            pad_e += p.recent * p.recent + p.second * p.second;
+        }
+        assert!(ding_e < 1.0e-8, "washes at zero still sounded: {ding_e}");
+        assert!(pad_e > 1.0e-4, "following pads were silent: {pad_e}");
     }
 
     #[test]

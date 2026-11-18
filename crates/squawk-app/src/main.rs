@@ -371,6 +371,8 @@ struct ControlBlock {
     deco_lag_beats_bits: AtomicU32,
     pan_handpan_bits: AtomicU32,
     pan_ding_bits: AtomicU32,
+    pan_waveshape_bits: AtomicU32,
+    pan_tambura_bits: AtomicU32,
     pan_recent_bits: AtomicU32,
     pan_second_bits: AtomicU32,
     pan_bass_bits: AtomicU32,
@@ -500,6 +502,8 @@ impl ControlBlock {
             deco_lag_beats_bits: AtomicU32::new(DEFAULT_DECO_LAG_BEATS.to_bits()),
             pan_handpan_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
             pan_ding_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
+            pan_waveshape_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
+            pan_tambura_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
             pan_recent_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
             pan_second_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
             pan_bass_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
@@ -645,6 +649,10 @@ impl ControlBlock {
             deco_lag_beats: f32::from_bits(self.deco_lag_beats_bits.load(Ordering::Relaxed)),
             pan_handpan: f32::from_bits(self.pan_handpan_bits.load(Ordering::Relaxed)),
             pan_ding: f32::from_bits(self.pan_ding_bits.load(Ordering::Relaxed)),
+            pan_waveshape: f32::from_bits(self.pan_waveshape_bits.load(Ordering::Relaxed)),
+            pan_tambura: f32::from_bits(self.pan_tambura_bits.load(Ordering::Relaxed)),
+            pan_recent: f32::from_bits(self.pan_recent_bits.load(Ordering::Relaxed)),
+            pan_second: f32::from_bits(self.pan_second_bits.load(Ordering::Relaxed)),
             pan_bass: f32::from_bits(self.pan_bass_bits.load(Ordering::Relaxed)),
             pan_echo: f32::from_bits(self.pan_echo_bits.load(Ordering::Relaxed)),
             pan_reverb: f32::from_bits(self.pan_reverb_bits.load(Ordering::Relaxed)),
@@ -1218,6 +1226,12 @@ impl ControlBlock {
                 f32::from_bits(self.pan_handpan_bits.load(Ordering::Relaxed))
             }
             ParameterId::PanDing => f32::from_bits(self.pan_ding_bits.load(Ordering::Relaxed)),
+            ParameterId::PanWaveshape => {
+                f32::from_bits(self.pan_waveshape_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::PanTambura => {
+                f32::from_bits(self.pan_tambura_bits.load(Ordering::Relaxed))
+            }
             ParameterId::PanRecent => f32::from_bits(self.pan_recent_bits.load(Ordering::Relaxed)),
             ParameterId::PanSecond => f32::from_bits(self.pan_second_bits.load(Ordering::Relaxed)),
             ParameterId::PanBass => f32::from_bits(self.pan_bass_bits.load(Ordering::Relaxed)),
@@ -1443,6 +1457,12 @@ impl ControlBlock {
                 .pan_handpan_bits
                 .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::PanDing => self.pan_ding_bits.store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::PanWaveshape => self
+                .pan_waveshape_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::PanTambura => self
+                .pan_tambura_bits
+                .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::PanRecent => self
                 .pan_recent_bits
                 .store(value.to_bits(), Ordering::Relaxed),
@@ -1587,6 +1607,8 @@ impl ControlBlock {
         self.set_parameter_value(ParameterId::DecoLagBeats, DEFAULT_DECO_LAG_BEATS);
         self.set_parameter_value(ParameterId::PanHandpan, DEFAULT_PAN);
         self.set_parameter_value(ParameterId::PanDing, DEFAULT_PAN);
+        self.set_parameter_value(ParameterId::PanWaveshape, DEFAULT_PAN);
+        self.set_parameter_value(ParameterId::PanTambura, DEFAULT_PAN);
         self.set_parameter_value(ParameterId::PanRecent, DEFAULT_PAN);
         self.set_parameter_value(ParameterId::PanSecond, DEFAULT_PAN);
         self.set_parameter_value(ParameterId::PanBass, DEFAULT_PAN);
@@ -1729,6 +1751,10 @@ struct ControlSnapshot {
     deco_lag_beats: f32,
     pan_handpan: f32,
     pan_ding: f32,
+    pan_waveshape: f32,
+    pan_tambura: f32,
+    pan_recent: f32,
+    pan_second: f32,
     pan_bass: f32,
     pan_echo: f32,
     pan_reverb: f32,
@@ -1821,6 +1847,8 @@ pub enum ParameterId {
     DecoLagBeats,
     PanHandpan,
     PanDing,
+    PanWaveshape,
+    PanTambura,
     PanRecent,
     PanSecond,
     PanBass,
@@ -1970,6 +1998,8 @@ impl ParameterId {
             ParameterId::MixTambura => 84,
             ParameterId::MixReverb => 85,
             ParameterId::PanReverb => 86,
+            ParameterId::PanWaveshape => 87,
+            ParameterId::PanTambura => 88,
             ParameterId::DingFormant1 => 36,
             ParameterId::DingFormant2 => 37,
             ParameterId::DingFormant3 => 38,
@@ -2062,6 +2092,8 @@ impl ParameterId {
             84 => Some(ParameterId::MixTambura),
             85 => Some(ParameterId::MixReverb),
             86 => Some(ParameterId::PanReverb),
+            87 => Some(ParameterId::PanWaveshape),
+            88 => Some(ParameterId::PanTambura),
             36 => Some(ParameterId::DingFormant1),
             37 => Some(ParameterId::DingFormant2),
             38 => Some(ParameterId::DingFormant3),
@@ -2215,7 +2247,9 @@ impl ParameterId {
             ParameterId::DecoDensity => "Density",
             ParameterId::DecoLagBeats => "Lag",
             ParameterId::PanHandpan => "Handpan pan",
-            ParameterId::PanDing => "Ding pan",
+            ParameterId::PanDing => "Resonator pan",
+            ParameterId::PanWaveshape => "Waveshape pan",
+            ParameterId::PanTambura => "Tambura pan",
             ParameterId::PanRecent => "Recent pan",
             ParameterId::PanSecond => "Second pan",
             ParameterId::PanBass => "Bass pan",
@@ -2308,6 +2342,8 @@ impl ParameterId {
             ParameterId::DecoLagBeats => DECO_LAG_BEATS_RANGE,
             ParameterId::PanHandpan
             | ParameterId::PanDing
+            | ParameterId::PanWaveshape
+            | ParameterId::PanTambura
             | ParameterId::PanRecent
             | ParameterId::PanSecond
             | ParameterId::PanBass
@@ -2428,6 +2464,8 @@ impl ParameterId {
             ParameterId::DecoLagBeats => format!("{value:.1} beats"),
             ParameterId::PanHandpan
             | ParameterId::PanDing
+            | ParameterId::PanWaveshape
+            | ParameterId::PanTambura
             | ParameterId::PanRecent
             | ParameterId::PanSecond
             | ParameterId::PanBass
@@ -2526,6 +2564,8 @@ impl ParameterId {
             ParameterId::DecoLagBeats => "deco_lag_beats",
             ParameterId::PanHandpan => "pan_handpan",
             ParameterId::PanDing => "pan_ding",
+            ParameterId::PanWaveshape => "pan_waveshape",
+            ParameterId::PanTambura => "pan_tambura",
             ParameterId::PanRecent => "pan_recent",
             ParameterId::PanSecond => "pan_second",
             ParameterId::PanBass => "pan_bass",
@@ -2618,6 +2658,8 @@ impl ParameterId {
             "deco_lag_beats" => Some(ParameterId::DecoLagBeats),
             "pan_handpan" => Some(ParameterId::PanHandpan),
             "pan_ding" => Some(ParameterId::PanDing),
+            "pan_waveshape" => Some(ParameterId::PanWaveshape),
+            "pan_tambura" => Some(ParameterId::PanTambura),
             "pan_recent" => Some(ParameterId::PanRecent),
             "pan_second" => Some(ParameterId::PanSecond),
             "pan_bass" => Some(ParameterId::PanBass),
@@ -2945,6 +2987,8 @@ fn main() -> anyhow::Result<()> {
     control.set_parameter_value(ParameterId::DecoLagBeats, snapshot.deco_lag_beats);
     control.set_parameter_value(ParameterId::PanHandpan, snapshot.pan_handpan);
     control.set_parameter_value(ParameterId::PanDing, snapshot.pan_ding);
+    control.set_parameter_value(ParameterId::PanWaveshape, snapshot.pan_waveshape);
+    control.set_parameter_value(ParameterId::PanTambura, snapshot.pan_tambura);
     control.set_parameter_value(ParameterId::PanRecent, snapshot.pan_recent);
     control.set_parameter_value(ParameterId::PanSecond, snapshot.pan_second);
     control.set_parameter_value(ParameterId::PanBass, snapshot.pan_bass);
@@ -3321,7 +3365,12 @@ where
                     support.set_fade(snapshot.support_fade);
                     support.set_parts(snapshot.support_muted, snapshot.support_solo);
                     support.set_wash_parts(snapshot.wash_muted, snapshot.wash_solo);
-                    support.set_foreign_solo(snapshot.handpan_solo || snapshot.wash_solo != 0);
+                    support.set_foreign_solo(
+                        snapshot.handpan_solo
+                            || snapshot.reverb_solo
+                            || snapshot.support_solo != 0
+                            || snapshot.wash_solo != 0,
+                    );
                     support.set_ding_wash(snapshot.ding_wash);
                     support.set_ding_shape(snapshot.ding_shape);
                     support.set_ding_spread(snapshot.ding_spread);
@@ -3423,6 +3472,10 @@ where
                     };
                     let pan_handpan = snapshot.pan_handpan;
                     let pan_ding = snapshot.pan_ding;
+                    let pan_waveshape = snapshot.pan_waveshape;
+                    let pan_tambura = snapshot.pan_tambura;
+                    let pan_recent = snapshot.pan_recent;
+                    let pan_second = snapshot.pan_second;
                     let pan_bass = snapshot.pan_bass;
                     let pan_echo = snapshot.pan_echo;
                     let pan_reverb = snapshot.pan_reverb;
@@ -3469,13 +3522,17 @@ where
                         };
                         let parts = support.next_parts().limited();
                         let (hand_l, hand_r) = stereo_pan(pan_handpan);
-                        let (drone_l, drone_r) = stereo_pan(pan_ding);
+                        let (res_l, res_r) = stereo_pan(pan_ding);
+                        let (wave_l, wave_r) = stereo_pan(pan_waveshape);
+                        let (tamb_l, tamb_r) = stereo_pan(pan_tambura);
+                        let (recent_l, recent_r) = stereo_pan(pan_recent);
+                        let (second_l, second_r) = stereo_pan(pan_second);
                         let (bass_l, bass_r) = stereo_pan(pan_bass);
                         let (echo_l, echo_r) = stereo_pan(pan_echo);
                         let (rev_l, rev_r) = stereo_pan(pan_reverb);
                         let (wet_l, wet_r) = reverb.next_wet(
                             hand,
-                            parts.ding,
+                            parts.ding(),
                             parts.recent,
                             parts.second,
                             parts.bass,
@@ -3483,15 +3540,22 @@ where
                         );
                         let wet_l = wet_l * reverb_level * rev_l;
                         let wet_r = wet_r * reverb_level * rev_r;
-                        let drone = parts.ding + parts.recent + parts.second;
                         let dry_l = hand * hand_l
-                            + drone * drone_l
+                            + parts.resonator * res_l
+                            + parts.waveshape * wave_l
+                            + parts.tambura * tamb_l
+                            + parts.recent * recent_l
+                            + parts.second * second_l
                             + parts.bass * bass_l
                             + echo_sig * echo_l
                             + line
                             + click;
                         let dry_r = hand * hand_r
-                            + drone * drone_r
+                            + parts.resonator * res_r
+                            + parts.waveshape * wave_r
+                            + parts.tambura * tamb_r
+                            + parts.recent * recent_r
+                            + parts.second * second_r
                             + parts.bass * bass_r
                             + echo_sig * echo_r
                             + line
