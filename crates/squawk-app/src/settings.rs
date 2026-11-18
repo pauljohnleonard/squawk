@@ -153,6 +153,12 @@ struct StoredSettings {
     ding_strings: f32,
     #[serde(default = "default_tambura_jawari")]
     tambura_jawari: f32,
+    #[serde(default = "default_tambura_pick")]
+    tambura_pick: f32,
+    #[serde(default = "default_tambura_strum")]
+    tambura_strum: f32,
+    #[serde(default = "default_tambura_cycle")]
+    tambura_cycle: f32,
     #[serde(default = "default_ding_formant_1")]
     ding_formant_1: f32,
     #[serde(default = "default_ding_formant_2")]
@@ -171,6 +177,11 @@ struct StoredSettings {
     mix_handpan: f32,
     #[serde(default = "default_mix_level")]
     mix_ding: f32,
+    /// Absent in older settings; migrated from exclusive ding_wash + mix_ding.
+    #[serde(default)]
+    mix_waveshape: Option<f32>,
+    #[serde(default)]
+    mix_tambura: Option<f32>,
     #[serde(default = "default_mix_level")]
     mix_recent: f32,
     #[serde(default = "default_mix_level")]
@@ -243,6 +254,10 @@ struct StoredSettings {
     #[serde(default = "default_support_part_flags")]
     support_solo: [bool; 5],
     #[serde(default)]
+    wash_muted: u8,
+    #[serde(default)]
+    wash_solo: u8,
+    #[serde(default)]
     handpan_muted: bool,
     #[serde(default)]
     handpan_solo: bool,
@@ -303,6 +318,9 @@ impl Default for StoredSettings {
             ding_brightness: crate::DEFAULT_DING_BRIGHTNESS,
             ding_strings: crate::DEFAULT_DING_STRINGS,
             tambura_jawari: crate::DEFAULT_TAMBURA_JAWARI,
+            tambura_pick: crate::DEFAULT_TAMBURA_PICK,
+            tambura_strum: crate::DEFAULT_TAMBURA_STRUM,
+            tambura_cycle: crate::DEFAULT_TAMBURA_CYCLE,
             ding_formant_1: crate::DEFAULT_DING_FORMANT_1,
             ding_formant_2: crate::DEFAULT_DING_FORMANT_2,
             ding_formant_3: crate::DEFAULT_DING_FORMANT_3,
@@ -312,6 +330,8 @@ impl Default for StoredSettings {
             ding_q_3: crate::DEFAULT_DING_RESONANCE,
             mix_handpan: crate::DEFAULT_MIX_LEVEL,
             mix_ding: crate::DEFAULT_MIX_LEVEL,
+            mix_waveshape: Some(0.0),
+            mix_tambura: Some(0.0),
             mix_recent: crate::DEFAULT_MIX_LEVEL,
             mix_second: crate::DEFAULT_MIX_LEVEL,
             mix_bass: crate::DEFAULT_MIX_LEVEL,
@@ -347,6 +367,8 @@ impl Default for StoredSettings {
             groove_auto_lock: crate::DEFAULT_GROOVE_AUTO_LOCK,
             support_muted: default_support_part_flags(),
             support_solo: default_support_part_flags(),
+            wash_muted: 0,
+            wash_solo: 0,
             handpan_muted: false,
             handpan_solo: false,
             keyboard_rows_set_place: default_keyboard_rows_set_place(),
@@ -405,6 +427,9 @@ pub(crate) struct SettingsSnapshot {
     pub ding_brightness: f32,
     pub ding_strings: f32,
     pub tambura_jawari: f32,
+    pub tambura_pick: f32,
+    pub tambura_strum: f32,
+    pub tambura_cycle: f32,
     pub ding_formant_1: f32,
     pub ding_formant_2: f32,
     pub ding_formant_3: f32,
@@ -414,6 +439,8 @@ pub(crate) struct SettingsSnapshot {
     pub ding_q_3: f32,
     pub mix_handpan: f32,
     pub mix_ding: f32,
+    pub mix_waveshape: f32,
+    pub mix_tambura: f32,
     pub mix_recent: f32,
     pub mix_second: f32,
     pub mix_bass: f32,
@@ -447,6 +474,8 @@ pub(crate) struct SettingsSnapshot {
     pub groove_auto_lock: bool,
     pub support_muted: u8,
     pub support_solo: u8,
+    pub wash_muted: u8,
+    pub wash_solo: u8,
     pub handpan_muted: bool,
     pub handpan_solo: bool,
     pub keyboard_rows_set_place: bool,
@@ -455,6 +484,18 @@ pub(crate) struct SettingsSnapshot {
 
 impl From<StoredSettings> for SettingsSnapshot {
     fn from(value: StoredSettings) -> Self {
+        // Older presets had one Root fader + exclusive ding_wash; split into three wash levels.
+        let migrated = match (value.mix_waveshape, value.mix_tambura) {
+            (Some(wave), Some(tambura)) => (value.mix_ding, wave, tambura),
+            _ => {
+                let root = value.mix_ding;
+                match value.ding_wash.min(2) {
+                    1 => (0.0, root, 0.0),
+                    2 => (0.0, 0.0, root),
+                    _ => (root, 0.0, 0.0),
+                }
+            }
+        };
         let mut midi_assignments = Vec::new();
         for (key, cc) in value.midi_cc.iter() {
             if let Some(param) = ParameterId::from_storage_key(key) {
@@ -519,6 +560,9 @@ impl From<StoredSettings> for SettingsSnapshot {
             ding_brightness: ParameterId::DingBrightness.clamp(value.ding_brightness),
             ding_strings: ParameterId::DingStrings.clamp(value.ding_strings),
             tambura_jawari: ParameterId::TamburaJawari.clamp(value.tambura_jawari),
+            tambura_pick: ParameterId::TamburaPick.clamp(value.tambura_pick),
+            tambura_strum: ParameterId::TamburaStrum.clamp(value.tambura_strum),
+            tambura_cycle: ParameterId::TamburaCycle.clamp(value.tambura_cycle),
             ding_formant_1: ParameterId::DingFormant1.clamp(value.ding_formant_1),
             ding_formant_2: ParameterId::DingFormant2.clamp(value.ding_formant_2),
             ding_formant_3: ParameterId::DingFormant3.clamp(value.ding_formant_3),
@@ -527,7 +571,9 @@ impl From<StoredSettings> for SettingsSnapshot {
             ding_q_2: ParameterId::DingQ2.clamp(value.ding_q_2),
             ding_q_3: ParameterId::DingQ3.clamp(value.ding_q_3),
             mix_handpan: ParameterId::MixHandpan.clamp(value.mix_handpan),
-            mix_ding: ParameterId::MixDing.clamp(value.mix_ding),
+            mix_ding: ParameterId::MixDing.clamp(migrated.0),
+            mix_waveshape: ParameterId::MixWaveshape.clamp(migrated.1),
+            mix_tambura: ParameterId::MixTambura.clamp(migrated.2),
             mix_recent: ParameterId::MixRecent.clamp(value.mix_recent),
             mix_second: ParameterId::MixSecond.clamp(value.mix_second),
             mix_bass: ParameterId::MixBass.clamp(value.mix_bass),
@@ -560,8 +606,11 @@ impl From<StoredSettings> for SettingsSnapshot {
             bells_index_decay: ParameterId::BellsIndexDecay.clamp(value.bells_index_decay),
             groove_click_enabled: value.groove_click_enabled,
             groove_auto_lock: value.groove_auto_lock,
-            support_muted: squawk_engine::support_part_mask(value.support_muted),
-            support_solo: squawk_engine::support_part_mask(value.support_solo),
+            // Drop legacy Drone mute bits (Root/Recent/Second); Bass/Echo keep 3..4.
+            support_muted: squawk_engine::support_part_mask(value.support_muted) & !0b0111,
+            support_solo: squawk_engine::support_part_mask(value.support_solo) & !0b0111,
+            wash_muted: value.wash_muted & 0b111,
+            wash_solo: value.wash_solo & 0b111,
             handpan_muted: value.handpan_muted,
             handpan_solo: value.handpan_solo,
             keyboard_rows_set_place: value.keyboard_rows_set_place,
@@ -643,6 +692,9 @@ impl SettingsStore {
                 ParameterId::DingBrightness => data.ding_brightness = clamped,
                 ParameterId::DingStrings => data.ding_strings = clamped,
                 ParameterId::TamburaJawari => data.tambura_jawari = clamped,
+                ParameterId::TamburaPick => data.tambura_pick = clamped,
+                ParameterId::TamburaStrum => data.tambura_strum = clamped,
+                ParameterId::TamburaCycle => data.tambura_cycle = clamped,
                 ParameterId::DingFormant1 => data.ding_formant_1 = clamped,
                 ParameterId::DingFormant2 => data.ding_formant_2 = clamped,
                 ParameterId::DingFormant3 => data.ding_formant_3 = clamped,
@@ -652,6 +704,8 @@ impl SettingsStore {
                 ParameterId::DingQ3 => data.ding_q_3 = clamped,
                 ParameterId::MixHandpan => data.mix_handpan = clamped,
                 ParameterId::MixDing => data.mix_ding = clamped,
+                ParameterId::MixWaveshape => data.mix_waveshape = Some(clamped),
+                ParameterId::MixTambura => data.mix_tambura = Some(clamped),
                 ParameterId::MixRecent => data.mix_recent = clamped,
                 ParameterId::MixSecond => data.mix_second = clamped,
                 ParameterId::MixBass => data.mix_bass = clamped,
@@ -733,6 +787,15 @@ impl SettingsStore {
             let mut data = self.state.lock();
             data.support_muted = muted;
             data.support_solo = solo;
+        }
+        self.persist_current_state()
+    }
+
+    pub(crate) fn update_wash_parts(&self, muted: u8, solo: u8) -> Result<()> {
+        {
+            let mut data = self.state.lock();
+            data.wash_muted = muted & 0b111;
+            data.wash_solo = solo & 0b111;
         }
         self.persist_current_state()
     }
@@ -889,6 +952,9 @@ impl SettingsStore {
             data.ding_brightness = crate::DEFAULT_DING_BRIGHTNESS;
             data.ding_strings = crate::DEFAULT_DING_STRINGS;
             data.tambura_jawari = crate::DEFAULT_TAMBURA_JAWARI;
+            data.tambura_pick = crate::DEFAULT_TAMBURA_PICK;
+            data.tambura_strum = crate::DEFAULT_TAMBURA_STRUM;
+            data.tambura_cycle = crate::DEFAULT_TAMBURA_CYCLE;
             data.ding_formant_1 = crate::DEFAULT_DING_FORMANT_1;
             data.ding_formant_2 = crate::DEFAULT_DING_FORMANT_2;
             data.ding_formant_3 = crate::DEFAULT_DING_FORMANT_3;
@@ -898,6 +964,8 @@ impl SettingsStore {
             data.ding_q_3 = crate::DEFAULT_DING_RESONANCE;
             data.mix_handpan = crate::DEFAULT_MIX_LEVEL;
             data.mix_ding = crate::DEFAULT_MIX_LEVEL;
+            data.mix_waveshape = Some(0.0);
+            data.mix_tambura = Some(0.0);
             data.mix_recent = crate::DEFAULT_MIX_LEVEL;
             data.mix_second = crate::DEFAULT_MIX_LEVEL;
             data.mix_bass = crate::DEFAULT_MIX_LEVEL;
@@ -932,6 +1000,8 @@ impl SettingsStore {
             data.groove_auto_lock = crate::DEFAULT_GROOVE_AUTO_LOCK;
             data.support_muted = default_support_part_flags();
             data.support_solo = default_support_part_flags();
+            data.wash_muted = 0;
+            data.wash_solo = 0;
             data.handpan_muted = false;
             data.handpan_solo = false;
             data.keyboard_rows_set_place = default_keyboard_rows_set_place();
@@ -1165,6 +1235,18 @@ fn default_ding_strings() -> f32 {
 
 fn default_tambura_jawari() -> f32 {
     crate::DEFAULT_TAMBURA_JAWARI
+}
+
+fn default_tambura_pick() -> f32 {
+    crate::DEFAULT_TAMBURA_PICK
+}
+
+fn default_tambura_strum() -> f32 {
+    crate::DEFAULT_TAMBURA_STRUM
+}
+
+fn default_tambura_cycle() -> f32 {
+    crate::DEFAULT_TAMBURA_CYCLE
 }
 
 fn default_ding_formant_1() -> f32 {

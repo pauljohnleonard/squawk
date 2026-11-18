@@ -79,7 +79,10 @@ use squawk_engine::{
     DEFAULT_SUPPORT_PULSE as ENGINE_DEFAULT_SUPPORT_PULSE,
     DEFAULT_SUPPORT_WANDER as ENGINE_DEFAULT_SUPPORT_WANDER,
     DEFAULT_SUPPORT_WIDTH as ENGINE_DEFAULT_SUPPORT_WIDTH,
+    DEFAULT_TAMBURA_CYCLE as ENGINE_DEFAULT_TAMBURA_CYCLE,
     DEFAULT_TAMBURA_JAWARI as ENGINE_DEFAULT_TAMBURA_JAWARI,
+    DEFAULT_TAMBURA_PICK as ENGINE_DEFAULT_TAMBURA_PICK,
+    DEFAULT_TAMBURA_STRUM as ENGINE_DEFAULT_TAMBURA_STRUM,
     DEFAULT_VELOCITY_COUPLING as ENGINE_DEFAULT_VELOCITY_COUPLING, DING_BRIGHTNESS_RANGE,
     DING_FORMANT_RANGE, DING_RESONANCE_RANGE, DING_SHAPE_RANGE, DING_SPREAD_RANGE,
     DING_STRINGS_RANGE, DRONE_LEVEL_RANGE, Decorations, DroneVoice, DroneVoiceKind, Engine,
@@ -94,8 +97,9 @@ use squawk_engine::{
     REVERB_DING_RANGE, REVERB_ECHO_RANGE, REVERB_HANDPAN_RANGE, REVERB_RECENT_RANGE,
     REVERB_SECOND_RANGE, REVERB_SUPPORT_RANGE, REVERB_TONE_RANGE, Reverb, SUPPORT_DRIFT_RANGE,
     SUPPORT_FADE_RANGE, SUPPORT_LEVEL_RANGE, SUPPORT_MOTION_RANGE, SUPPORT_PULSE_RANGE,
-    SUPPORT_WANDER_RANGE, SUPPORT_WIDTH_RANGE, StrikeVoice, Support, TAMBURA_JAWARI_RANGE,
-    TamburaBank, handpan_interval_hz, stereo_pan,
+    SUPPORT_WANDER_RANGE, SUPPORT_WIDTH_RANGE, StrikeVoice, Support, TAMBURA_CYCLE_RANGE,
+    TAMBURA_JAWARI_RANGE, TAMBURA_PICK_RANGE, TAMBURA_STRUM_RANGE, TamburaBank,
+    handpan_interval_hz, stereo_pan,
 };
 
 use settings::SettingsStore;
@@ -163,6 +167,9 @@ pub(crate) const DEFAULT_DING_SPREAD: f32 = ENGINE_DEFAULT_DING_SPREAD;
 pub(crate) const DEFAULT_DING_BRIGHTNESS: f32 = ENGINE_DEFAULT_DING_BRIGHTNESS;
 pub(crate) const DEFAULT_DING_STRINGS: f32 = ENGINE_DEFAULT_DING_STRINGS;
 pub(crate) const DEFAULT_TAMBURA_JAWARI: f32 = ENGINE_DEFAULT_TAMBURA_JAWARI;
+pub(crate) const DEFAULT_TAMBURA_PICK: f32 = ENGINE_DEFAULT_TAMBURA_PICK;
+pub(crate) const DEFAULT_TAMBURA_STRUM: f32 = ENGINE_DEFAULT_TAMBURA_STRUM;
+pub(crate) const DEFAULT_TAMBURA_CYCLE: f32 = ENGINE_DEFAULT_TAMBURA_CYCLE;
 pub(crate) const DEFAULT_DING_FORMANT_1: f32 = ENGINE_DEFAULT_DING_FORMANT_1;
 pub(crate) const DEFAULT_DING_FORMANT_2: f32 = ENGINE_DEFAULT_DING_FORMANT_2;
 pub(crate) const DEFAULT_DING_FORMANT_3: f32 = ENGINE_DEFAULT_DING_FORMANT_3;
@@ -329,14 +336,21 @@ struct ControlBlock {
     echo_instrument: AtomicU8,
     support_muted: AtomicU8,
     support_solo: AtomicU8,
+    wash_muted: AtomicU8,
+    wash_solo: AtomicU8,
     handpan_muted: AtomicBool,
     handpan_solo: AtomicBool,
+    reverb_muted: AtomicBool,
+    reverb_solo: AtomicBool,
     ding_wash: AtomicU8,
     ding_shape_bits: AtomicU32,
     ding_spread_bits: AtomicU32,
     ding_brightness_bits: AtomicU32,
     ding_strings_bits: AtomicU32,
     tambura_jawari_bits: AtomicU32,
+    tambura_pick_bits: AtomicU32,
+    tambura_strum_bits: AtomicU32,
+    tambura_cycle_bits: AtomicU32,
     ding_formant_1_bits: AtomicU32,
     ding_formant_2_bits: AtomicU32,
     ding_formant_3_bits: AtomicU32,
@@ -346,10 +360,13 @@ struct ControlBlock {
     ding_q_3_bits: AtomicU32,
     mix_handpan_bits: AtomicU32,
     mix_ding_bits: AtomicU32,
+    mix_waveshape_bits: AtomicU32,
+    mix_tambura_bits: AtomicU32,
     mix_recent_bits: AtomicU32,
     mix_second_bits: AtomicU32,
     mix_bass_bits: AtomicU32,
     mix_taps_bits: AtomicU32,
+    mix_reverb_bits: AtomicU32,
     deco_density_bits: AtomicU32,
     deco_lag_beats_bits: AtomicU32,
     pan_handpan_bits: AtomicU32,
@@ -358,6 +375,7 @@ struct ControlBlock {
     pan_second_bits: AtomicU32,
     pan_bass_bits: AtomicU32,
     pan_echo_bits: AtomicU32,
+    pan_reverb_bits: AtomicU32,
     formant_rate_bits: AtomicU32,
     formant_depth_bits: AtomicU32,
     groove_sensitivity_bits: AtomicU32,
@@ -447,14 +465,21 @@ impl ControlBlock {
             echo_instrument: AtomicU8::new(DEFAULT_ECHO_INSTRUMENT),
             support_muted: AtomicU8::new(0),
             support_solo: AtomicU8::new(0),
+            wash_muted: AtomicU8::new(0),
+            wash_solo: AtomicU8::new(0),
             handpan_muted: AtomicBool::new(false),
             handpan_solo: AtomicBool::new(false),
+            reverb_muted: AtomicBool::new(false),
+            reverb_solo: AtomicBool::new(false),
             ding_wash: AtomicU8::new(DEFAULT_DING_WASH),
             ding_shape_bits: AtomicU32::new(DEFAULT_DING_SHAPE.to_bits()),
             ding_spread_bits: AtomicU32::new(DEFAULT_DING_SPREAD.to_bits()),
             ding_brightness_bits: AtomicU32::new(DEFAULT_DING_BRIGHTNESS.to_bits()),
             ding_strings_bits: AtomicU32::new(DEFAULT_DING_STRINGS.to_bits()),
             tambura_jawari_bits: AtomicU32::new(DEFAULT_TAMBURA_JAWARI.to_bits()),
+            tambura_pick_bits: AtomicU32::new(DEFAULT_TAMBURA_PICK.to_bits()),
+            tambura_strum_bits: AtomicU32::new(DEFAULT_TAMBURA_STRUM.to_bits()),
+            tambura_cycle_bits: AtomicU32::new(DEFAULT_TAMBURA_CYCLE.to_bits()),
             ding_formant_1_bits: AtomicU32::new(DEFAULT_DING_FORMANT_1.to_bits()),
             ding_formant_2_bits: AtomicU32::new(DEFAULT_DING_FORMANT_2.to_bits()),
             ding_formant_3_bits: AtomicU32::new(DEFAULT_DING_FORMANT_3.to_bits()),
@@ -464,10 +489,13 @@ impl ControlBlock {
             ding_q_3_bits: AtomicU32::new(DEFAULT_DING_RESONANCE.to_bits()),
             mix_handpan_bits: AtomicU32::new(DEFAULT_MIX_LEVEL.to_bits()),
             mix_ding_bits: AtomicU32::new(DEFAULT_MIX_LEVEL.to_bits()),
+            mix_waveshape_bits: AtomicU32::new(0.0f32.to_bits()),
+            mix_tambura_bits: AtomicU32::new(0.0f32.to_bits()),
             mix_recent_bits: AtomicU32::new(DEFAULT_MIX_LEVEL.to_bits()),
             mix_second_bits: AtomicU32::new(DEFAULT_MIX_LEVEL.to_bits()),
             mix_bass_bits: AtomicU32::new(DEFAULT_MIX_LEVEL.to_bits()),
             mix_taps_bits: AtomicU32::new(DEFAULT_MIX_LEVEL.to_bits()),
+            mix_reverb_bits: AtomicU32::new(DEFAULT_MIX_LEVEL.to_bits()),
             deco_density_bits: AtomicU32::new(DEFAULT_DECO_DENSITY.to_bits()),
             deco_lag_beats_bits: AtomicU32::new(DEFAULT_DECO_LAG_BEATS.to_bits()),
             pan_handpan_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
@@ -476,6 +504,7 @@ impl ControlBlock {
             pan_second_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
             pan_bass_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
             pan_echo_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
+            pan_reverb_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
             formant_rate_bits: AtomicU32::new(DEFAULT_FORMANT_RATE.to_bits()),
             formant_depth_bits: AtomicU32::new(DEFAULT_FORMANT_DEPTH.to_bits()),
             groove_sensitivity_bits: AtomicU32::new(DEFAULT_GROOVE_SENSITIVITY.to_bits()),
@@ -582,14 +611,21 @@ impl ControlBlock {
             echo_instrument: self.echo_instrument.load(Ordering::Relaxed),
             support_muted: self.support_muted.load(Ordering::Relaxed),
             support_solo: self.support_solo.load(Ordering::Relaxed),
+            wash_muted: self.wash_muted.load(Ordering::Relaxed),
+            wash_solo: self.wash_solo.load(Ordering::Relaxed),
             handpan_muted: self.handpan_muted.load(Ordering::Relaxed),
             handpan_solo: self.handpan_solo.load(Ordering::Relaxed),
+            reverb_muted: self.reverb_muted.load(Ordering::Relaxed),
+            reverb_solo: self.reverb_solo.load(Ordering::Relaxed),
             ding_wash: self.ding_wash.load(Ordering::Relaxed),
             ding_shape: f32::from_bits(self.ding_shape_bits.load(Ordering::Relaxed)),
             ding_spread: f32::from_bits(self.ding_spread_bits.load(Ordering::Relaxed)),
             ding_brightness: f32::from_bits(self.ding_brightness_bits.load(Ordering::Relaxed)),
             ding_strings: f32::from_bits(self.ding_strings_bits.load(Ordering::Relaxed)),
             tambura_jawari: f32::from_bits(self.tambura_jawari_bits.load(Ordering::Relaxed)),
+            tambura_pick: f32::from_bits(self.tambura_pick_bits.load(Ordering::Relaxed)),
+            tambura_strum: f32::from_bits(self.tambura_strum_bits.load(Ordering::Relaxed)),
+            tambura_cycle: f32::from_bits(self.tambura_cycle_bits.load(Ordering::Relaxed)),
             ding_formant_1: f32::from_bits(self.ding_formant_1_bits.load(Ordering::Relaxed)),
             ding_formant_2: f32::from_bits(self.ding_formant_2_bits.load(Ordering::Relaxed)),
             ding_formant_3: f32::from_bits(self.ding_formant_3_bits.load(Ordering::Relaxed)),
@@ -598,16 +634,20 @@ impl ControlBlock {
             ding_q_3: f32::from_bits(self.ding_q_3_bits.load(Ordering::Relaxed)),
             mix_handpan: f32::from_bits(self.mix_handpan_bits.load(Ordering::Relaxed)),
             mix_ding: f32::from_bits(self.mix_ding_bits.load(Ordering::Relaxed)),
+            mix_waveshape: f32::from_bits(self.mix_waveshape_bits.load(Ordering::Relaxed)),
+            mix_tambura: f32::from_bits(self.mix_tambura_bits.load(Ordering::Relaxed)),
             mix_recent: f32::from_bits(self.mix_recent_bits.load(Ordering::Relaxed)),
             mix_second: f32::from_bits(self.mix_second_bits.load(Ordering::Relaxed)),
             mix_bass: f32::from_bits(self.mix_bass_bits.load(Ordering::Relaxed)),
             mix_taps: f32::from_bits(self.mix_taps_bits.load(Ordering::Relaxed)),
+            mix_reverb: f32::from_bits(self.mix_reverb_bits.load(Ordering::Relaxed)),
             deco_density: f32::from_bits(self.deco_density_bits.load(Ordering::Relaxed)),
             deco_lag_beats: f32::from_bits(self.deco_lag_beats_bits.load(Ordering::Relaxed)),
             pan_handpan: f32::from_bits(self.pan_handpan_bits.load(Ordering::Relaxed)),
             pan_ding: f32::from_bits(self.pan_ding_bits.load(Ordering::Relaxed)),
             pan_bass: f32::from_bits(self.pan_bass_bits.load(Ordering::Relaxed)),
             pan_echo: f32::from_bits(self.pan_echo_bits.load(Ordering::Relaxed)),
+            pan_reverb: f32::from_bits(self.pan_reverb_bits.load(Ordering::Relaxed)),
             formant_rate: f32::from_bits(self.formant_rate_bits.load(Ordering::Relaxed)),
             formant_depth: f32::from_bits(self.formant_depth_bits.load(Ordering::Relaxed)),
             groove_sensitivity: f32::from_bits(
@@ -725,6 +765,14 @@ impl ControlBlock {
         self.support_solo.load(Ordering::Relaxed)
     }
 
+    pub(crate) fn wash_muted(&self) -> u8 {
+        self.wash_muted.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn wash_solo(&self) -> u8 {
+        self.wash_solo.load(Ordering::Relaxed)
+    }
+
     pub(crate) fn ding_wash(&self) -> u8 {
         self.ding_wash.load(Ordering::Relaxed)
     }
@@ -738,6 +786,11 @@ impl ControlBlock {
         self.support_solo.store(solo, Ordering::Relaxed);
     }
 
+    pub(crate) fn set_wash_parts(&self, muted: u8, solo: u8) {
+        self.wash_muted.store(muted & 0b111, Ordering::Relaxed);
+        self.wash_solo.store(solo & 0b111, Ordering::Relaxed);
+    }
+
     pub(crate) fn handpan_muted(&self) -> bool {
         self.handpan_muted.load(Ordering::Relaxed)
     }
@@ -749,6 +802,19 @@ impl ControlBlock {
     pub(crate) fn set_handpan_mute_solo(&self, muted: bool, solo: bool) {
         self.handpan_muted.store(muted, Ordering::Relaxed);
         self.handpan_solo.store(solo, Ordering::Relaxed);
+    }
+
+    pub(crate) fn reverb_muted(&self) -> bool {
+        self.reverb_muted.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn reverb_solo(&self) -> bool {
+        self.reverb_solo.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_reverb_mute_solo(&self, muted: bool, solo: bool) {
+        self.reverb_muted.store(muted, Ordering::Relaxed);
+        self.reverb_solo.store(solo, Ordering::Relaxed);
     }
 
     pub(crate) fn instrument(&self) -> u8 {
@@ -1103,6 +1169,15 @@ impl ControlBlock {
             ParameterId::TamburaJawari => {
                 f32::from_bits(self.tambura_jawari_bits.load(Ordering::Relaxed))
             }
+            ParameterId::TamburaPick => {
+                f32::from_bits(self.tambura_pick_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::TamburaStrum => {
+                f32::from_bits(self.tambura_strum_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::TamburaCycle => {
+                f32::from_bits(self.tambura_cycle_bits.load(Ordering::Relaxed))
+            }
             ParameterId::DingFormant1 => {
                 f32::from_bits(self.ding_formant_1_bits.load(Ordering::Relaxed))
             }
@@ -1122,10 +1197,17 @@ impl ControlBlock {
                 f32::from_bits(self.mix_handpan_bits.load(Ordering::Relaxed))
             }
             ParameterId::MixDing => f32::from_bits(self.mix_ding_bits.load(Ordering::Relaxed)),
+            ParameterId::MixWaveshape => {
+                f32::from_bits(self.mix_waveshape_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::MixTambura => {
+                f32::from_bits(self.mix_tambura_bits.load(Ordering::Relaxed))
+            }
             ParameterId::MixRecent => f32::from_bits(self.mix_recent_bits.load(Ordering::Relaxed)),
             ParameterId::MixSecond => f32::from_bits(self.mix_second_bits.load(Ordering::Relaxed)),
             ParameterId::MixBass => f32::from_bits(self.mix_bass_bits.load(Ordering::Relaxed)),
             ParameterId::MixTaps => f32::from_bits(self.mix_taps_bits.load(Ordering::Relaxed)),
+            ParameterId::MixReverb => f32::from_bits(self.mix_reverb_bits.load(Ordering::Relaxed)),
             ParameterId::DecoDensity => {
                 f32::from_bits(self.deco_density_bits.load(Ordering::Relaxed))
             }
@@ -1140,6 +1222,7 @@ impl ControlBlock {
             ParameterId::PanSecond => f32::from_bits(self.pan_second_bits.load(Ordering::Relaxed)),
             ParameterId::PanBass => f32::from_bits(self.pan_bass_bits.load(Ordering::Relaxed)),
             ParameterId::PanEcho => f32::from_bits(self.pan_echo_bits.load(Ordering::Relaxed)),
+            ParameterId::PanReverb => f32::from_bits(self.pan_reverb_bits.load(Ordering::Relaxed)),
             ParameterId::FormantRate => {
                 f32::from_bits(self.formant_rate_bits.load(Ordering::Relaxed))
             }
@@ -1305,6 +1388,15 @@ impl ControlBlock {
             ParameterId::TamburaJawari => self
                 .tambura_jawari_bits
                 .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TamburaPick => self
+                .tambura_pick_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TamburaStrum => self
+                .tambura_strum_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TamburaCycle => self
+                .tambura_cycle_bits
+                .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::DingFormant1 => self
                 .ding_formant_1_bits
                 .store(value.to_bits(), Ordering::Relaxed),
@@ -1324,6 +1416,12 @@ impl ControlBlock {
                 .mix_handpan_bits
                 .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::MixDing => self.mix_ding_bits.store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::MixWaveshape => self
+                .mix_waveshape_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::MixTambura => self
+                .mix_tambura_bits
+                .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::MixRecent => self
                 .mix_recent_bits
                 .store(value.to_bits(), Ordering::Relaxed),
@@ -1332,6 +1430,9 @@ impl ControlBlock {
                 .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::MixBass => self.mix_bass_bits.store(value.to_bits(), Ordering::Relaxed),
             ParameterId::MixTaps => self.mix_taps_bits.store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::MixReverb => self
+                .mix_reverb_bits
+                .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::DecoDensity => self
                 .deco_density_bits
                 .store(value.to_bits(), Ordering::Relaxed),
@@ -1350,6 +1451,9 @@ impl ControlBlock {
                 .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::PanBass => self.pan_bass_bits.store(value.to_bits(), Ordering::Relaxed),
             ParameterId::PanEcho => self.pan_echo_bits.store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::PanReverb => self
+                .pan_reverb_bits
+                .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::FormantRate => self
                 .formant_rate_bits
                 .store(value.to_bits(), Ordering::Relaxed),
@@ -1451,13 +1555,18 @@ impl ControlBlock {
         self.set_parameter_value(ParameterId::ReverbTone, DEFAULT_REVERB_TONE);
         self.set_echo_instrument_u8(DEFAULT_ECHO_INSTRUMENT);
         self.set_support_parts(0, 0);
+        self.set_wash_parts(0, 0);
         self.set_handpan_mute_solo(false, false);
+        self.set_reverb_mute_solo(false, false);
         self.set_ding_wash(DEFAULT_DING_WASH);
         self.set_parameter_value(ParameterId::DingShape, DEFAULT_DING_SHAPE);
         self.set_parameter_value(ParameterId::DingSpread, DEFAULT_DING_SPREAD);
         self.set_parameter_value(ParameterId::DingBrightness, DEFAULT_DING_BRIGHTNESS);
         self.set_parameter_value(ParameterId::DingStrings, DEFAULT_DING_STRINGS);
         self.set_parameter_value(ParameterId::TamburaJawari, DEFAULT_TAMBURA_JAWARI);
+        self.set_parameter_value(ParameterId::TamburaPick, DEFAULT_TAMBURA_PICK);
+        self.set_parameter_value(ParameterId::TamburaStrum, DEFAULT_TAMBURA_STRUM);
+        self.set_parameter_value(ParameterId::TamburaCycle, DEFAULT_TAMBURA_CYCLE);
         self.set_parameter_value(ParameterId::DingFormant1, DEFAULT_DING_FORMANT_1);
         self.set_parameter_value(ParameterId::DingFormant2, DEFAULT_DING_FORMANT_2);
         self.set_parameter_value(ParameterId::DingFormant3, DEFAULT_DING_FORMANT_3);
@@ -1467,10 +1576,13 @@ impl ControlBlock {
         self.set_parameter_value(ParameterId::DingQ3, DEFAULT_DING_RESONANCE);
         self.set_parameter_value(ParameterId::MixHandpan, DEFAULT_MIX_LEVEL);
         self.set_parameter_value(ParameterId::MixDing, DEFAULT_MIX_LEVEL);
+        self.set_parameter_value(ParameterId::MixWaveshape, 0.0);
+        self.set_parameter_value(ParameterId::MixTambura, 0.0);
         self.set_parameter_value(ParameterId::MixRecent, DEFAULT_MIX_LEVEL);
         self.set_parameter_value(ParameterId::MixSecond, DEFAULT_MIX_LEVEL);
         self.set_parameter_value(ParameterId::MixBass, DEFAULT_MIX_LEVEL);
         self.set_parameter_value(ParameterId::MixTaps, DEFAULT_MIX_LEVEL);
+        self.set_parameter_value(ParameterId::MixReverb, DEFAULT_MIX_LEVEL);
         self.set_parameter_value(ParameterId::DecoDensity, DEFAULT_DECO_DENSITY);
         self.set_parameter_value(ParameterId::DecoLagBeats, DEFAULT_DECO_LAG_BEATS);
         self.set_parameter_value(ParameterId::PanHandpan, DEFAULT_PAN);
@@ -1479,6 +1591,7 @@ impl ControlBlock {
         self.set_parameter_value(ParameterId::PanSecond, DEFAULT_PAN);
         self.set_parameter_value(ParameterId::PanBass, DEFAULT_PAN);
         self.set_parameter_value(ParameterId::PanEcho, DEFAULT_PAN);
+        self.set_parameter_value(ParameterId::PanReverb, DEFAULT_PAN);
         self.set_parameter_value(ParameterId::FormantRate, DEFAULT_FORMANT_RATE);
         self.set_parameter_value(ParameterId::FormantDepth, DEFAULT_FORMANT_DEPTH);
         self.set_parameter_value(ParameterId::GrooveSensitivity, DEFAULT_GROOVE_SENSITIVITY);
@@ -1582,14 +1695,21 @@ struct ControlSnapshot {
     echo_instrument: u8,
     support_muted: u8,
     support_solo: u8,
+    wash_muted: u8,
+    wash_solo: u8,
     handpan_muted: bool,
     handpan_solo: bool,
+    reverb_muted: bool,
+    reverb_solo: bool,
     ding_wash: u8,
     ding_shape: f32,
     ding_spread: f32,
     ding_brightness: f32,
     ding_strings: f32,
     tambura_jawari: f32,
+    tambura_pick: f32,
+    tambura_strum: f32,
+    tambura_cycle: f32,
     ding_formant_1: f32,
     ding_formant_2: f32,
     ding_formant_3: f32,
@@ -1598,16 +1718,20 @@ struct ControlSnapshot {
     ding_q_3: f32,
     mix_handpan: f32,
     mix_ding: f32,
+    mix_waveshape: f32,
+    mix_tambura: f32,
     mix_recent: f32,
     mix_second: f32,
     mix_bass: f32,
     mix_taps: f32,
+    mix_reverb: f32,
     deco_density: f32,
     deco_lag_beats: f32,
     pan_handpan: f32,
     pan_ding: f32,
     pan_bass: f32,
     pan_echo: f32,
+    pan_reverb: f32,
     formant_rate: f32,
     formant_depth: f32,
     groove_sensitivity: f32,
@@ -1674,6 +1798,9 @@ pub enum ParameterId {
     DingBrightness,
     DingStrings,
     TamburaJawari,
+    TamburaPick,
+    TamburaStrum,
+    TamburaCycle,
     DingFormant1,
     DingFormant2,
     DingFormant3,
@@ -1683,10 +1810,13 @@ pub enum ParameterId {
     DingQ3,
     MixHandpan,
     MixDing,
+    MixWaveshape,
+    MixTambura,
     MixRecent,
     MixSecond,
     MixBass,
     MixTaps,
+    MixReverb,
     DecoDensity,
     DecoLagBeats,
     PanHandpan,
@@ -1695,6 +1825,7 @@ pub enum ParameterId {
     PanSecond,
     PanBass,
     PanEcho,
+    PanReverb,
     FormantRate,
     FormantDepth,
     GrooveSensitivity,
@@ -1773,11 +1904,14 @@ const DING_WASH_PARAMETERS: [ParameterId; 3] = [
     ParameterId::DingBrightness,
 ];
 
-const TAMBURA_PARAMETERS: [ParameterId; 4] = [
+const TAMBURA_PARAMETERS: [ParameterId; 7] = [
     ParameterId::DingStrings,
     ParameterId::DingShape,
     ParameterId::DingSpread,
     ParameterId::TamburaJawari,
+    ParameterId::TamburaPick,
+    ParameterId::TamburaStrum,
+    ParameterId::TamburaCycle,
 ];
 
 const FORMANT_PARAMETERS: [ParameterId; 6] = [
@@ -1829,6 +1963,13 @@ impl ParameterId {
             ParameterId::DingBrightness => 34,
             ParameterId::DingStrings => 35,
             ParameterId::TamburaJawari => 79,
+            ParameterId::TamburaPick => 80,
+            ParameterId::TamburaStrum => 81,
+            ParameterId::TamburaCycle => 82,
+            ParameterId::MixWaveshape => 83,
+            ParameterId::MixTambura => 84,
+            ParameterId::MixReverb => 85,
+            ParameterId::PanReverb => 86,
             ParameterId::DingFormant1 => 36,
             ParameterId::DingFormant2 => 37,
             ParameterId::DingFormant3 => 38,
@@ -1914,6 +2055,13 @@ impl ParameterId {
             34 => Some(ParameterId::DingBrightness),
             35 => Some(ParameterId::DingStrings),
             79 => Some(ParameterId::TamburaJawari),
+            80 => Some(ParameterId::TamburaPick),
+            81 => Some(ParameterId::TamburaStrum),
+            82 => Some(ParameterId::TamburaCycle),
+            83 => Some(ParameterId::MixWaveshape),
+            84 => Some(ParameterId::MixTambura),
+            85 => Some(ParameterId::MixReverb),
+            86 => Some(ParameterId::PanReverb),
             36 => Some(ParameterId::DingFormant1),
             37 => Some(ParameterId::DingFormant2),
             38 => Some(ParameterId::DingFormant3),
@@ -2024,7 +2172,7 @@ impl ParameterId {
             ParameterId::HandpanOctave => "Octave",
             ParameterId::HandpanFifth => "Fifth",
             ParameterId::HandpanHigherDecay => "Higher decay",
-            ParameterId::SupportLevel => "Support level",
+            ParameterId::SupportLevel => "Drone",
             ParameterId::SupportPulse => "Pulse",
             ParameterId::SupportWidth => "Width",
             ParameterId::SupportWander => "Wander",
@@ -2045,6 +2193,9 @@ impl ParameterId {
             ParameterId::DingBrightness => "Brightness",
             ParameterId::DingStrings => "Strings",
             ParameterId::TamburaJawari => "Jawari",
+            ParameterId::TamburaPick => "Pick",
+            ParameterId::TamburaStrum => "Strum",
+            ParameterId::TamburaCycle => "Cycle",
             ParameterId::DingFormant1 => "Formant 1",
             ParameterId::DingFormant2 => "Formant 2",
             ParameterId::DingFormant3 => "Formant 3",
@@ -2053,11 +2204,14 @@ impl ParameterId {
             ParameterId::DingQ2 => "Q 2",
             ParameterId::DingQ3 => "Q 3",
             ParameterId::MixHandpan => "Handpan",
-            ParameterId::MixDing => "Root",
+            ParameterId::MixDing => "Resonator",
+            ParameterId::MixWaveshape => "Waveshape",
+            ParameterId::MixTambura => "Tambura",
             ParameterId::MixRecent => "Recent",
             ParameterId::MixSecond => "Second",
             ParameterId::MixBass => "Bass",
             ParameterId::MixTaps => "Level",
+            ParameterId::MixReverb => "Reverb",
             ParameterId::DecoDensity => "Density",
             ParameterId::DecoLagBeats => "Lag",
             ParameterId::PanHandpan => "Handpan pan",
@@ -2066,6 +2220,7 @@ impl ParameterId {
             ParameterId::PanSecond => "Second pan",
             ParameterId::PanBass => "Bass pan",
             ParameterId::PanEcho => "Echo pan",
+            ParameterId::PanReverb => "Reverb pan",
             ParameterId::FormantRate => "Rate",
             ParameterId::FormantDepth => "Depth",
             ParameterId::GrooveSensitivity => "Sensitivity",
@@ -2130,6 +2285,9 @@ impl ParameterId {
             ParameterId::DingBrightness => DING_BRIGHTNESS_RANGE,
             ParameterId::DingStrings => DING_STRINGS_RANGE,
             ParameterId::TamburaJawari => TAMBURA_JAWARI_RANGE,
+            ParameterId::TamburaPick => TAMBURA_PICK_RANGE,
+            ParameterId::TamburaStrum => TAMBURA_STRUM_RANGE,
+            ParameterId::TamburaCycle => TAMBURA_CYCLE_RANGE,
             ParameterId::DingFormant1 | ParameterId::DingFormant2 | ParameterId::DingFormant3 => {
                 DING_FORMANT_RANGE
             }
@@ -2139,10 +2297,13 @@ impl ParameterId {
             | ParameterId::DingQ3 => DING_RESONANCE_RANGE,
             ParameterId::MixHandpan
             | ParameterId::MixDing
+            | ParameterId::MixWaveshape
+            | ParameterId::MixTambura
             | ParameterId::MixRecent
             | ParameterId::MixSecond
             | ParameterId::MixBass
-            | ParameterId::MixTaps => MIX_LEVEL_RANGE,
+            | ParameterId::MixTaps
+            | ParameterId::MixReverb => MIX_LEVEL_RANGE,
             ParameterId::DecoDensity => DECO_DENSITY_RANGE,
             ParameterId::DecoLagBeats => DECO_LAG_BEATS_RANGE,
             ParameterId::PanHandpan
@@ -2150,7 +2311,8 @@ impl ParameterId {
             | ParameterId::PanRecent
             | ParameterId::PanSecond
             | ParameterId::PanBass
-            | ParameterId::PanEcho => PAN_RANGE,
+            | ParameterId::PanEcho
+            | ParameterId::PanReverb => PAN_RANGE,
             ParameterId::FormantRate => FORMANT_RATE_RANGE,
             ParameterId::FormantDepth => FORMANT_DEPTH_RANGE,
             ParameterId::GrooveSensitivity => GROOVE_SENSITIVITY_RANGE,
@@ -2243,6 +2405,9 @@ impl ParameterId {
             ParameterId::DingBrightness => format!("{value:.2}"),
             ParameterId::DingStrings => TamburaBank::string_mode_label(value).to_string(),
             ParameterId::TamburaJawari => format!("{value:.2}"),
+            ParameterId::TamburaPick => format!("{value:.2}"),
+            ParameterId::TamburaStrum => format!("{value:.2} s"),
+            ParameterId::TamburaCycle => format!("{value:.1} s"),
             ParameterId::DingFormant1 | ParameterId::DingFormant2 | ParameterId::DingFormant3 => {
                 format!("{value:.0} Hz")
             }
@@ -2252,10 +2417,13 @@ impl ParameterId {
             | ParameterId::DingQ3 => format!("{value:.1}"),
             ParameterId::MixHandpan
             | ParameterId::MixDing
+            | ParameterId::MixWaveshape
+            | ParameterId::MixTambura
             | ParameterId::MixRecent
             | ParameterId::MixSecond
             | ParameterId::MixBass
             | ParameterId::MixTaps
+            | ParameterId::MixReverb
             | ParameterId::DecoDensity => format!("{value:.2}"),
             ParameterId::DecoLagBeats => format!("{value:.1} beats"),
             ParameterId::PanHandpan
@@ -2263,7 +2431,8 @@ impl ParameterId {
             | ParameterId::PanRecent
             | ParameterId::PanSecond
             | ParameterId::PanBass
-            | ParameterId::PanEcho => format_pan(value),
+            | ParameterId::PanEcho
+            | ParameterId::PanReverb => format_pan(value),
             ParameterId::FormantRate => format!("{value:.2} Hz"),
             ParameterId::FormantDepth => format!("{value:.2} oct"),
             ParameterId::GrooveSensitivity
@@ -2334,6 +2503,9 @@ impl ParameterId {
             ParameterId::DingBrightness => "ding_brightness",
             ParameterId::DingStrings => "ding_strings",
             ParameterId::TamburaJawari => "tambura_jawari",
+            ParameterId::TamburaPick => "tambura_pick",
+            ParameterId::TamburaStrum => "tambura_strum",
+            ParameterId::TamburaCycle => "tambura_cycle",
             ParameterId::DingFormant1 => "ding_formant_1",
             ParameterId::DingFormant2 => "ding_formant_2",
             ParameterId::DingFormant3 => "ding_formant_3",
@@ -2343,10 +2515,13 @@ impl ParameterId {
             ParameterId::DingQ3 => "ding_q_3",
             ParameterId::MixHandpan => "mix_handpan",
             ParameterId::MixDing => "mix_ding",
+            ParameterId::MixWaveshape => "mix_waveshape",
+            ParameterId::MixTambura => "mix_tambura",
             ParameterId::MixRecent => "mix_recent",
             ParameterId::MixSecond => "mix_second",
             ParameterId::MixBass => "mix_bass",
             ParameterId::MixTaps => "mix_taps",
+            ParameterId::MixReverb => "mix_reverb",
             ParameterId::DecoDensity => "deco_density",
             ParameterId::DecoLagBeats => "deco_lag_beats",
             ParameterId::PanHandpan => "pan_handpan",
@@ -2355,6 +2530,7 @@ impl ParameterId {
             ParameterId::PanSecond => "pan_second",
             ParameterId::PanBass => "pan_bass",
             ParameterId::PanEcho => "pan_echo",
+            ParameterId::PanReverb => "pan_reverb",
             ParameterId::FormantRate => "formant_rate",
             ParameterId::FormantDepth => "formant_depth",
             ParameterId::GrooveSensitivity => "groove_sensitivity",
@@ -2419,6 +2595,9 @@ impl ParameterId {
             "ding_brightness" => Some(ParameterId::DingBrightness),
             "ding_strings" => Some(ParameterId::DingStrings),
             "tambura_jawari" => Some(ParameterId::TamburaJawari),
+            "tambura_pick" => Some(ParameterId::TamburaPick),
+            "tambura_strum" => Some(ParameterId::TamburaStrum),
+            "tambura_cycle" => Some(ParameterId::TamburaCycle),
             "ding_formant_1" => Some(ParameterId::DingFormant1),
             "ding_formant_2" => Some(ParameterId::DingFormant2),
             "ding_formant_3" => Some(ParameterId::DingFormant3),
@@ -2428,10 +2607,13 @@ impl ParameterId {
             "ding_q_3" => Some(ParameterId::DingQ3),
             "mix_handpan" => Some(ParameterId::MixHandpan),
             "mix_ding" => Some(ParameterId::MixDing),
+            "mix_waveshape" => Some(ParameterId::MixWaveshape),
+            "mix_tambura" => Some(ParameterId::MixTambura),
             "mix_recent" => Some(ParameterId::MixRecent),
             "mix_second" => Some(ParameterId::MixSecond),
             "mix_bass" => Some(ParameterId::MixBass),
             "mix_taps" => Some(ParameterId::MixTaps),
+            "mix_reverb" => Some(ParameterId::MixReverb),
             "echo_feedback" | "deco_density" => Some(ParameterId::DecoDensity),
             "deco_lag_beats" => Some(ParameterId::DecoLagBeats),
             "pan_handpan" => Some(ParameterId::PanHandpan),
@@ -2440,6 +2622,7 @@ impl ParameterId {
             "pan_second" => Some(ParameterId::PanSecond),
             "pan_bass" => Some(ParameterId::PanBass),
             "pan_echo" => Some(ParameterId::PanEcho),
+            "pan_reverb" => Some(ParameterId::PanReverb),
             "formant_rate" => Some(ParameterId::FormantRate),
             "formant_depth" => Some(ParameterId::FormantDepth),
             "groove_sensitivity" => Some(ParameterId::GrooveSensitivity),
@@ -2730,13 +2913,18 @@ fn main() -> anyhow::Result<()> {
     control.set_parameter_value(ParameterId::ReverbTone, snapshot.reverb_tone);
     control.set_echo_instrument_u8(snapshot.echo_instrument);
     control.set_support_parts(snapshot.support_muted, snapshot.support_solo);
+    control.set_wash_parts(snapshot.wash_muted, snapshot.wash_solo);
     control.set_handpan_mute_solo(snapshot.handpan_muted, snapshot.handpan_solo);
+    control.set_reverb_mute_solo(snapshot.reverb_muted, snapshot.reverb_solo);
     control.set_ding_wash(snapshot.ding_wash);
     control.set_parameter_value(ParameterId::DingShape, snapshot.ding_shape);
     control.set_parameter_value(ParameterId::DingSpread, snapshot.ding_spread);
     control.set_parameter_value(ParameterId::DingBrightness, snapshot.ding_brightness);
     control.set_parameter_value(ParameterId::DingStrings, snapshot.ding_strings);
     control.set_parameter_value(ParameterId::TamburaJawari, snapshot.tambura_jawari);
+    control.set_parameter_value(ParameterId::TamburaPick, snapshot.tambura_pick);
+    control.set_parameter_value(ParameterId::TamburaStrum, snapshot.tambura_strum);
+    control.set_parameter_value(ParameterId::TamburaCycle, snapshot.tambura_cycle);
     control.set_parameter_value(ParameterId::DingFormant1, snapshot.ding_formant_1);
     control.set_parameter_value(ParameterId::DingFormant2, snapshot.ding_formant_2);
     control.set_parameter_value(ParameterId::DingFormant3, snapshot.ding_formant_3);
@@ -2746,10 +2934,13 @@ fn main() -> anyhow::Result<()> {
     control.set_parameter_value(ParameterId::DingQ3, snapshot.ding_q_3);
     control.set_parameter_value(ParameterId::MixHandpan, snapshot.mix_handpan);
     control.set_parameter_value(ParameterId::MixDing, snapshot.mix_ding);
+    control.set_parameter_value(ParameterId::MixWaveshape, snapshot.mix_waveshape);
+    control.set_parameter_value(ParameterId::MixTambura, snapshot.mix_tambura);
     control.set_parameter_value(ParameterId::MixRecent, snapshot.mix_recent);
     control.set_parameter_value(ParameterId::MixSecond, snapshot.mix_second);
     control.set_parameter_value(ParameterId::MixBass, snapshot.mix_bass);
     control.set_parameter_value(ParameterId::MixTaps, snapshot.mix_taps);
+    control.set_parameter_value(ParameterId::MixReverb, snapshot.mix_reverb);
     control.set_parameter_value(ParameterId::DecoDensity, snapshot.deco_density);
     control.set_parameter_value(ParameterId::DecoLagBeats, snapshot.deco_lag_beats);
     control.set_parameter_value(ParameterId::PanHandpan, snapshot.pan_handpan);
@@ -2758,6 +2949,7 @@ fn main() -> anyhow::Result<()> {
     control.set_parameter_value(ParameterId::PanSecond, snapshot.pan_second);
     control.set_parameter_value(ParameterId::PanBass, snapshot.pan_bass);
     control.set_parameter_value(ParameterId::PanEcho, snapshot.pan_echo);
+    control.set_parameter_value(ParameterId::PanReverb, snapshot.pan_reverb);
     control.set_parameter_value(ParameterId::FormantRate, snapshot.formant_rate);
     control.set_parameter_value(ParameterId::FormantDepth, snapshot.formant_depth);
     control.set_parameter_value(ParameterId::GrooveSensitivity, snapshot.groove_sensitivity);
@@ -3119,7 +3311,7 @@ where
                     handpan.set_octave(snapshot.handpan_octave);
                     handpan.set_fifth(snapshot.handpan_fifth);
                     handpan.set_higher_decay(snapshot.handpan_higher_decay);
-                    // Bake today's Support level so part fader 1 keeps the same balance.
+                    // Wash Levels are the loudness controls; keep a fixed pad bus gain.
                     support.set_level(DEFAULT_SUPPORT_LEVEL);
                     support.set_pulse(snapshot.support_pulse);
                     support.set_width(snapshot.support_width);
@@ -3128,13 +3320,17 @@ where
                     support.set_motion(snapshot.support_motion);
                     support.set_fade(snapshot.support_fade);
                     support.set_parts(snapshot.support_muted, snapshot.support_solo);
-                    support.set_foreign_solo(snapshot.handpan_solo);
+                    support.set_wash_parts(snapshot.wash_muted, snapshot.wash_solo);
+                    support.set_foreign_solo(snapshot.handpan_solo || snapshot.wash_solo != 0);
                     support.set_ding_wash(snapshot.ding_wash);
                     support.set_ding_shape(snapshot.ding_shape);
                     support.set_ding_spread(snapshot.ding_spread);
                     support.set_ding_brightness(snapshot.ding_brightness);
                     support.set_ding_strings(snapshot.ding_strings);
                     support.set_tambura_jawari(snapshot.tambura_jawari);
+                    support.set_tambura_pick(snapshot.tambura_pick);
+                    support.set_tambura_strum(snapshot.tambura_strum);
+                    support.set_tambura_cycle(snapshot.tambura_cycle);
                     support.set_ding_formant(0, snapshot.ding_formant_1);
                     support.set_ding_formant(1, snapshot.ding_formant_2);
                     support.set_ding_formant(2, snapshot.ding_formant_3);
@@ -3143,7 +3339,11 @@ where
                     support.set_ding_formant_q(2, snapshot.ding_q_3);
                     support.set_formant_rate(snapshot.formant_rate);
                     support.set_formant_depth(snapshot.formant_depth);
-                    support.set_part_level(0, snapshot.mix_ding);
+                    // Wash faders mix into Root; Root bus stays unity to avoid double attenuation.
+                    support.set_wash_level(0, snapshot.mix_ding);
+                    support.set_wash_level(1, snapshot.mix_waveshape);
+                    support.set_wash_level(2, snapshot.mix_tambura);
+                    support.set_part_level(0, DEFAULT_MIX_LEVEL);
                     support.set_part_level(1, snapshot.mix_recent);
                     support.set_part_level(2, snapshot.mix_second);
                     support.set_part_level(3, snapshot.mix_bass);
@@ -3155,7 +3355,7 @@ where
                     bells.set_index(snapshot.bells_index);
                     bells.set_index_decay(snapshot.bells_index_decay);
                     reverb.set_handpan_send(snapshot.reverb_handpan);
-                    // Drone strip send/pan cover Root+Recent+Second together.
+                    // Shared pad-bus send covers Root washes + Recent/Second.
                     reverb.set_ding_send(snapshot.reverb_ding);
                     reverb.set_recent_send(snapshot.reverb_ding);
                     reverb.set_second_send(snapshot.reverb_ding);
@@ -3197,7 +3397,10 @@ where
                     }
                     let deco_gain = support.echo_gain();
                     let echo_voice = EchoInstrument::from_u8(snapshot.echo_instrument);
-                    let any_solo = snapshot.handpan_solo || snapshot.support_solo != 0;
+                    let any_solo = snapshot.handpan_solo
+                        || snapshot.support_solo != 0
+                        || snapshot.wash_solo != 0
+                        || snapshot.reverb_solo;
                     let mix_handpan =
                         if snapshot.handpan_muted || (any_solo && !snapshot.handpan_solo) {
                             0.0
@@ -3222,6 +3425,14 @@ where
                     let pan_ding = snapshot.pan_ding;
                     let pan_bass = snapshot.pan_bass;
                     let pan_echo = snapshot.pan_echo;
+                    let pan_reverb = snapshot.pan_reverb;
+                    let reverb_level = if snapshot.reverb_muted {
+                        0.0
+                    } else {
+                        snapshot
+                            .mix_reverb
+                            .clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1)
+                    };
                     let mut samples_in_block = 0u32;
                     let peak = write_stereo_frames::<T>(data, channels, &audio_tap, || {
                         play_memory.tick(groove.tempo_locked(), groove.period_s());
@@ -3261,6 +3472,7 @@ where
                         let (drone_l, drone_r) = stereo_pan(pan_ding);
                         let (bass_l, bass_r) = stereo_pan(pan_bass);
                         let (echo_l, echo_r) = stereo_pan(pan_echo);
+                        let (rev_l, rev_r) = stereo_pan(pan_reverb);
                         let (wet_l, wet_r) = reverb.next_wet(
                             hand,
                             parts.ding,
@@ -3269,6 +3481,8 @@ where
                             parts.bass,
                             echo_sig,
                         );
+                        let wet_l = wet_l * reverb_level * rev_l;
+                        let wet_r = wet_r * reverb_level * rev_r;
                         let drone = parts.ding + parts.recent + parts.second;
                         let dry_l = hand * hand_l
                             + drone * drone_l
@@ -3337,9 +3551,12 @@ where
                             voice.strike_at(strike.0, strike.1, strike.2);
                         }
                     }
-                    let level = snapshot
-                        .mix_ding
-                        .clamp(DRONE_LEVEL_RANGE.0, DRONE_LEVEL_RANGE.1);
+                    let level = match Instrument::from_u8(snapshot.instrument) {
+                        Instrument::Waveshape => snapshot.mix_waveshape,
+                        Instrument::Tambura => snapshot.mix_tambura,
+                        _ => snapshot.mix_ding,
+                    }
+                    .clamp(DRONE_LEVEL_RANGE.0, DRONE_LEVEL_RANGE.1);
                     write_stereo_frames::<T>(data, channels, &audio_tap, || {
                         let mono = StrikeVoice::next_sample(voice) * level;
                         (mono, mono)
@@ -3412,6 +3629,9 @@ fn apply_drone_voice_params(voice: &mut DroneVoice, snapshot: &ControlSnapshot) 
     voice.set_brightness(snapshot.ding_brightness);
     voice.set_strings(snapshot.ding_strings);
     voice.set_jawari(snapshot.tambura_jawari);
+    voice.set_pick(snapshot.tambura_pick);
+    voice.set_strum(snapshot.tambura_strum);
+    voice.set_cycle(snapshot.tambura_cycle);
     voice.set_formant(0, snapshot.ding_formant_1);
     voice.set_formant(1, snapshot.ding_formant_2);
     voice.set_formant(2, snapshot.ding_formant_3);

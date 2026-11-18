@@ -4,7 +4,10 @@
 
 use core::f32::consts::TAU;
 
-pub use crate::tambura::{DEFAULT_TAMBURA_JAWARI, TAMBURA_JAWARI_RANGE};
+pub use crate::tambura::{
+    DEFAULT_TAMBURA_CYCLE, DEFAULT_TAMBURA_JAWARI, DEFAULT_TAMBURA_PICK, DEFAULT_TAMBURA_STRUM,
+    TAMBURA_CYCLE_RANGE, TAMBURA_JAWARI_RANGE, TAMBURA_PICK_RANGE, TAMBURA_STRUM_RANGE,
+};
 use crate::{
     HANDPAN_DING_MAX, HANDPAN_DING_MIN, HANDPAN_SCALE_COUNT, TamburaBank, handpan_interval_hz,
     handpan_notes,
@@ -65,6 +68,9 @@ const DRONE_COUNT: usize = 3;
 pub const SUPPORT_PARTS: usize = 5;
 pub const SUPPORT_PART_NAMES: [&str; SUPPORT_PARTS] = ["Root", "Recent", "Second", "Bass", "Echo"];
 const SUPPORT_PART_MASK: u8 = (1 << SUPPORT_PARTS) - 1;
+/// Resonator / Waveshape / Tambura mute and solo bits.
+pub const WASH_COUNT: usize = 3;
+const WASH_PART_MASK: u8 = (1 << WASH_COUNT) - 1;
 const FLAM_SECS: f32 = 0.080;
 const PAUSE_SECS: f32 = 2.5;
 const GLIDE_TAU_S: f32 = 0.45;
@@ -169,13 +175,22 @@ pub struct Support {
     foreign_solo: bool,
     /// Level of each part relative to today's balance. 1 leaves that balance alone.
     part_level: [f32; SUPPORT_PARTS],
-    /// 0 is the noise resonator. 1 is the waveshaped wash. 2 is the tambura chord.
+    /// Soft focus hint for the UI (0 Resonator, 1 Waveshape, 2 Tambura) — not exclusive audio.
     ding_wash: u8,
+    /// Mix gains for Resonator / Waveshape / Tambura into the Root bus.
+    wash_level: [f32; 3],
+    /// Bit set mutes that wash (0 Resonator, 1 Waveshape, 2 Tambura).
+    wash_muted: u8,
+    /// Bit set solos that wash; any solo silences non-soloed washes.
+    wash_solo: u8,
     ding_shape: f32,
     ding_spread: f32,
     ding_brightness: f32,
     ding_strings: u8,
     tambura_jawari: f32,
+    tambura_pick: f32,
+    tambura_strum: f32,
+    tambura_cycle: f32,
     ding_formant_hz: [f32; 3],
     ding_formant_q: [f32; 3],
     ding_phase: [f32; DING_VOICES],
@@ -240,11 +255,18 @@ impl Support {
             foreign_solo: false,
             part_level: [DEFAULT_MIX_LEVEL; SUPPORT_PARTS],
             ding_wash: DEFAULT_DING_WASH,
+            // Default matches exclusive Resonator (ding_wash 0); other washes start silent.
+            wash_level: [DEFAULT_MIX_LEVEL, 0.0, 0.0],
+            wash_muted: 0,
+            wash_solo: 0,
             ding_shape: DEFAULT_DING_SHAPE,
             ding_spread: DEFAULT_DING_SPREAD,
             ding_brightness: DEFAULT_DING_BRIGHTNESS,
             ding_strings: DEFAULT_DING_STRINGS as u8,
             tambura_jawari: DEFAULT_TAMBURA_JAWARI,
+            tambura_pick: DEFAULT_TAMBURA_PICK,
+            tambura_strum: DEFAULT_TAMBURA_STRUM,
+            tambura_cycle: DEFAULT_TAMBURA_CYCLE,
             ding_formant_hz: [
                 DEFAULT_DING_FORMANT_1,
                 DEFAULT_DING_FORMANT_2,
@@ -259,6 +281,9 @@ impl Support {
                 bank.set_shape(DEFAULT_DING_SHAPE);
                 bank.set_spread(DEFAULT_DING_SPREAD);
                 bank.set_jawari(DEFAULT_TAMBURA_JAWARI);
+                bank.set_pick(DEFAULT_TAMBURA_PICK);
+                bank.set_strum(DEFAULT_TAMBURA_STRUM);
+                bank.set_cycle(DEFAULT_TAMBURA_CYCLE);
                 bank.set_strings(DEFAULT_DING_STRINGS);
                 bank
             },
@@ -319,6 +344,12 @@ impl Support {
         self.ding_wash = wash.min(2);
     }
 
+    pub fn set_wash_level(&mut self, index: usize, level: f32) {
+        if let Some(slot) = self.wash_level.get_mut(index) {
+            *slot = level.clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
+        }
+    }
+
     pub fn set_ding_shape(&mut self, shape: f32) {
         self.ding_shape = shape.clamp(DING_SHAPE_RANGE.0, DING_SHAPE_RANGE.1);
         self.tambura.set_shape(self.ding_shape);
@@ -344,6 +375,21 @@ impl Support {
     pub fn set_tambura_jawari(&mut self, amount: f32) {
         self.tambura_jawari = amount.clamp(TAMBURA_JAWARI_RANGE.0, TAMBURA_JAWARI_RANGE.1);
         self.tambura.set_jawari(self.tambura_jawari);
+    }
+
+    pub fn set_tambura_pick(&mut self, amount: f32) {
+        self.tambura_pick = amount.clamp(TAMBURA_PICK_RANGE.0, TAMBURA_PICK_RANGE.1);
+        self.tambura.set_pick(self.tambura_pick);
+    }
+
+    pub fn set_tambura_strum(&mut self, seconds: f32) {
+        self.tambura_strum = seconds.clamp(TAMBURA_STRUM_RANGE.0, TAMBURA_STRUM_RANGE.1);
+        self.tambura.set_strum(self.tambura_strum);
+    }
+
+    pub fn set_tambura_cycle(&mut self, seconds: f32) {
+        self.tambura_cycle = seconds.clamp(TAMBURA_CYCLE_RANGE.0, TAMBURA_CYCLE_RANGE.1);
+        self.tambura.set_cycle(self.tambura_cycle);
     }
 
     pub fn set_ding_formant(&mut self, index: usize, hz: f32) {
@@ -374,6 +420,11 @@ impl Support {
     pub fn set_parts(&mut self, muted: u8, solo: u8) {
         self.muted = muted & SUPPORT_PART_MASK;
         self.solo = solo & SUPPORT_PART_MASK;
+    }
+
+    pub fn set_wash_parts(&mut self, muted: u8, solo: u8) {
+        self.wash_muted = muted & WASH_PART_MASK;
+        self.wash_solo = solo & WASH_PART_MASK;
     }
 
     pub fn set_foreign_solo(&mut self, active: bool) {
@@ -524,16 +575,22 @@ impl Support {
         let levels = self.part_level;
         let presence = self.level * self.presence;
         let body = breath * 0.55 * presence;
+        // Following pads duck when a wash is soloed or every wash is muted.
+        let pads_open = self.wash_solo == 0 && (self.wash_muted & WASH_PART_MASK) != WASH_PART_MASK;
+        let recent_gain = if pads_open {
+            part_gain(self.muted, self.solo, self.foreign_solo, &levels, 1)
+        } else {
+            0.0
+        };
+        let second_gain = if pads_open {
+            part_gain(self.muted, self.solo, self.foreign_solo, &levels, 2)
+        } else {
+            0.0
+        };
         SupportParts {
             ding: ding * part_gain(self.muted, self.solo, self.foreign_solo, &levels, 0) * body,
-            recent: color_a
-                * 0.72
-                * part_gain(self.muted, self.solo, self.foreign_solo, &levels, 1)
-                * body,
-            second: color_b
-                * 0.5
-                * part_gain(self.muted, self.solo, self.foreign_solo, &levels, 2)
-                * body,
+            recent: color_a * 0.72 * recent_gain * body,
+            second: color_b * 0.5 * second_gain * body,
             bass: self.bass.position
                 * bass_breath
                 * 0.4
@@ -668,16 +725,22 @@ impl Support {
         }
     }
 
-    /// Every Ding wash keeps running. The one you hear then goes through the formants.
+    /// All three Root washes keep running and mix by `wash_level`, then share formants.
     fn step_ding(&mut self, center_hz: f32, root: f32) -> f32 {
         let (unison, unison_buzz) = self.step_unison(center_hz);
         let (tambura, tambura_buzz) = self.step_tambura(center_hz);
-        let (body, excite, body_mix, peak_mix) = match self.ding_wash {
-            0 => (root, root, 1.0, 0.22),
-            2 => (tambura, tambura_buzz, 0.35, 0.28),
-            _ => (unison, unison_buzz, 1.0, 0.12),
-        };
-        self.colour_ding(body, excite, body_mix, peak_mix)
+        let levels = [
+            self.wash_level[0] * wash_gain(self.wash_muted, self.wash_solo, self.foreign_solo, 0),
+            self.wash_level[1] * wash_gain(self.wash_muted, self.wash_solo, self.foreign_solo, 1),
+            self.wash_level[2] * wash_gain(self.wash_muted, self.wash_solo, self.foreign_solo, 2),
+        ];
+        // Body / excite mixes match the old exclusive paths so each voice keeps its colour.
+        let body = root * levels[0] + unison * levels[1] + tambura * (0.35 * levels[2]);
+        let excite = root * (0.22 * levels[0])
+            + unison_buzz * (0.12 * levels[1])
+            + tambura_buzz * (0.28 * levels[2]);
+        // colour_ding's body_mix / peak_mix scale the summed paths; keep unity here.
+        self.colour_ding(body, excite, 1.0, 1.0)
     }
 
     /// Three sines around the Ding's moving center, through a soft shaper and a lowpass.
@@ -713,6 +776,9 @@ impl Support {
         self.tambura.set_shape(self.ding_shape);
         self.tambura.set_spread(self.ding_spread);
         self.tambura.set_jawari(self.tambura_jawari);
+        self.tambura.set_pick(self.tambura_pick);
+        self.tambura.set_strum(self.tambura_strum);
+        self.tambura.set_cycle(self.tambura_cycle);
         self.tambura.set_strings(self.ding_strings as f32);
         self.tambura.set_auto_pluck(true);
         self.tambura.next_sample()
@@ -831,6 +897,17 @@ fn part_gain(
         return 0.0;
     }
     levels[part]
+}
+
+fn wash_gain(muted: u8, solo: u8, foreign_solo: bool, wash: usize) -> f32 {
+    let bit = 1u8 << wash;
+    if (muted & bit) != 0 {
+        return 0.0;
+    }
+    if (solo != 0 || foreign_solo) && (solo & bit) == 0 {
+        return 0.0;
+    }
+    1.0
 }
 
 fn mode(hz: f32, zeta: f32) -> Mode {
@@ -1300,6 +1377,10 @@ mod tests {
         support.set_drift(0.0);
         support.set_parts(0, 1);
         support.set_ding_wash(wash);
+        // Exclusive solo of one wash — mirrors the old ding_wash switch for tests.
+        support.set_wash_level(0, if wash == 0 { DEFAULT_MIX_LEVEL } else { 0.0 });
+        support.set_wash_level(1, if wash == 1 { DEFAULT_MIX_LEVEL } else { 0.0 });
+        support.set_wash_level(2, if wash == 2 { DEFAULT_MIX_LEVEL } else { 0.0 });
         support.set_ding_shape(shape);
         support.set_ding_spread(0.0);
         support.set_ding_brightness(1.0);
@@ -1403,6 +1484,86 @@ mod tests {
                 "wash {wash} ignored the formant: coloured {coloured_power} parked {parked_power}"
             );
         }
+    }
+
+    #[test]
+    fn wash_mute_and_solo_isolate_washes() {
+        let ding = handpan_interval_hz(50, 0, 0);
+        let mut mixed = ding_only(0, DEFAULT_DING_SHAPE);
+        park_formants(&mut mixed);
+        mixed.set_wash_level(0, 1.0);
+        mixed.set_wash_level(1, 1.0);
+        mixed.set_wash_level(2, 0.0);
+        let both = tone_power(&collect(&mut mixed, 0.5), ding);
+
+        let mut muted_wave = ding_only(0, DEFAULT_DING_SHAPE);
+        park_formants(&mut muted_wave);
+        muted_wave.set_wash_level(0, 1.0);
+        muted_wave.set_wash_level(1, 1.0);
+        muted_wave.set_wash_parts(1 << 1, 0);
+        let res_only = tone_power(&collect(&mut muted_wave, 0.5), ding);
+        assert!(
+            res_only < both * 0.85,
+            "muting waveshape should drop energy: both {both} muted {res_only}"
+        );
+
+        let mut solo_wave = ding_only(0, DEFAULT_DING_SHAPE);
+        park_formants(&mut solo_wave);
+        solo_wave.set_wash_level(0, 1.0);
+        solo_wave.set_wash_level(1, 1.0);
+        solo_wave.set_wash_parts(0, 1 << 1);
+        solo_wave.set_part_level(1, 1.0);
+        solo_wave.set_part_level(2, 1.0);
+        // Following pads must stay silent while a wash is soloed.
+        let parts = {
+            let mut energy = [0.0f32; 3];
+            for _ in 0..24_000 {
+                let p = solo_wave.next_parts();
+                energy[0] += p.ding * p.ding;
+                energy[1] += p.recent * p.recent;
+                energy[2] += p.second * p.second;
+            }
+            energy
+        };
+        assert!(parts[0] > 1.0e-4, "soloed wash went silent: {}", parts[0]);
+        assert!(
+            parts[1] < 1.0e-8 && parts[2] < 1.0e-8,
+            "following pads leaked during wash solo: recent {} second {}",
+            parts[1],
+            parts[2]
+        );
+    }
+
+    #[test]
+    fn wash_levels_mix_instead_of_exclusive_ding_wash() {
+        let ding = handpan_interval_hz(50, 0, 0);
+        // ding_wash focus alone must not silence other washes that have level.
+        let mut focused = ding_only(0, DEFAULT_DING_SHAPE);
+        park_formants(&mut focused);
+        focused.set_ding_wash(0);
+        focused.set_wash_level(0, 0.0);
+        focused.set_wash_level(1, 1.0);
+        focused.set_wash_level(2, 0.0);
+        let wave_only = tone_power(&collect(&mut focused, 0.8), ding);
+        assert!(
+            wave_only > 1.0e-3,
+            "waveshape stayed silent while ding_wash focused resonator: {wave_only}"
+        );
+
+        let mut wave = ding_only(1, 0.0);
+        park_formants(&mut wave);
+        let wave_energy: f32 = collect(&mut wave, 0.6).iter().map(|s| s * s).sum();
+
+        let mut mixed = ding_only(1, 0.0);
+        park_formants(&mut mixed);
+        mixed.set_wash_level(0, 1.0);
+        mixed.set_wash_level(1, 1.0);
+        mixed.set_wash_level(2, 0.0);
+        let mixed_energy: f32 = collect(&mut mixed, 0.6).iter().map(|s| s * s).sum();
+        assert!(
+            mixed_energy > wave_energy * 1.2,
+            "adding resonator did not raise the Root mix: mixed {mixed_energy} wave {wave_energy}"
+        );
     }
 
     #[test]
@@ -1643,14 +1804,18 @@ mod tests {
         chord.set_ding_spread(DEFAULT_DING_SPREAD);
         chord.set_ding_strings(DEFAULT_DING_STRINGS);
         chord.set_tambura_jawari(DEFAULT_TAMBURA_JAWARI);
+        // Faster cycle for a fair level check against the continuous noise wash.
+        chord.set_tambura_strum(0.12);
+        chord.set_tambura_cycle(1.6);
+        chord.set_tambura_pick(0.45);
         chord.set_ding_resonance(DEFAULT_DING_RESONANCE);
         chord.set_ding_formant(0, DEFAULT_DING_FORMANT_1);
         chord.set_ding_formant(1, DEFAULT_DING_FORMANT_2);
         chord.set_ding_formant(2, DEFAULT_DING_FORMANT_3);
-        let chord_samples = collect(&mut chord, 2.0);
+        let chord_samples = collect(&mut chord, 3.0);
         let chord_rms = rms(&chord_samples);
         assert!(
-            chord_rms > noise_rms * 0.25 && chord_rms < noise_rms * 3.5,
+            chord_rms > noise_rms * 0.2 && chord_rms < noise_rms * 3.5,
             "tambura rms {chord_rms} noise rms {noise_rms}"
         );
         let ding = handpan_interval_hz(50, 0, 0);

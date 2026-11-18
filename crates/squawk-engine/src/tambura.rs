@@ -1,9 +1,9 @@
 //! Karplus–Strong tambura bank with a nonlinear jawari bridge.
 //!
-//! Each string is a delay loop: pluck injects noise, a loss filter dulls the
-//! return, and jawari folds peaks so the buzz settles as energy dies.
+//! Each string is a delay loop: a soft windowed noise burst plucks the line,
+//! a loss filter dulls the return, and jawari folds peaks as energy dies.
 
-use core::f32::consts::LN_2;
+use core::f32::consts::{LN_2, TAU};
 
 pub const DEFAULT_TAMBURA_JAWARI: f32 = 0.45;
 pub const TAMBURA_JAWARI_RANGE: (f32, f32) = (0.0, 1.0);
@@ -14,6 +14,15 @@ pub const TAMBURA_SPREAD_RANGE: (f32, f32) = (0.0, 40.0);
 /// 6 = full chord. 1–5 solo one string so each pitch can be checked alone.
 pub const DEFAULT_TAMBURA_STRINGS: f32 = 6.0;
 pub const TAMBURA_STRINGS_RANGE: (f32, f32) = (1.0, 6.0);
+/// Gap between strings in a strum (seconds).
+pub const DEFAULT_TAMBURA_STRUM: f32 = 0.22;
+pub const TAMBURA_STRUM_RANGE: (f32, f32) = (0.08, 0.45);
+/// Pause after a full strum before the next cycle (seconds).
+pub const DEFAULT_TAMBURA_CYCLE: f32 = 3.4;
+pub const TAMBURA_CYCLE_RANGE: (f32, f32) = (1.5, 6.0);
+/// 0 = soft pink pick, 1 = brighter / shorter.
+pub const DEFAULT_TAMBURA_PICK: f32 = 0.30;
+pub const TAMBURA_PICK_RANGE: (f32, f32) = (0.0, 1.0);
 
 /// 1 low Sa · 2 Sa− · 3 Sa+ · 4 Pa · 5 high Sa · 6 all
 const ACTIVE_BY_COUNT: [&[usize]; 6] = [&[0], &[1], &[2], &[3], &[4], &[0, 1, 2, 3, 4]];
@@ -24,12 +33,6 @@ const CENTS_TO_RATIO: f32 = LN_2 / 1200.0;
 const MIN_HZ: f32 = 20.0;
 const BODY_GAIN: f32 = 1.05;
 const EXCITE_GAIN: f32 = 1.15;
-const PLUCK_LEN_CYCLES: f32 = 0.45;
-/// Gap between strings in a slow strum (not groove-synced).
-const STRUM_GAP_S: f32 = 0.120;
-/// Pause after a full strum before the next cycle starts.
-const CYCLE_GAP_LO_S: f32 = 2.0;
-const CYCLE_GAP_HI_S: f32 = 3.2;
 const FLUSH: f32 = 1.0e-15;
 /// Only near true silence — earlier values chopped the natural ring.
 const ENV_GATE: f32 = 0.0012;
@@ -43,9 +46,13 @@ struct StringLine {
     loss: f32,
     env: f32,
     pluck_left: u32,
+    pluck_total: u32,
     pluck_amp: f32,
+    pluck_pick: f32,
+    pink: f32,
     stagger_left: u32,
     pending_amp: f32,
+    pending_pick: f32,
     rng: u32,
 }
 
@@ -58,9 +65,13 @@ impl StringLine {
             loss: 0.0,
             env: 0.0,
             pluck_left: 0,
+            pluck_total: 1,
             pluck_amp: 0.0,
+            pluck_pick: DEFAULT_TAMBURA_PICK,
+            pink: 0.0,
             stagger_left: 0,
             pending_amp: 0.0,
+            pending_pick: DEFAULT_TAMBURA_PICK,
             rng,
         }
     }
@@ -70,27 +81,32 @@ impl StringLine {
         self.delay = samples.clamp(2.0, max);
     }
 
-    fn schedule_pluck(&mut self, amp: f32, stagger_samples: u32) {
+    fn schedule_pluck(&mut self, amp: f32, pick: f32, stagger_samples: u32) {
         let amp = amp.clamp(0.0, 1.0);
         if amp <= 0.0 {
             return;
         }
         if stagger_samples == 0 {
-            self.begin_pluck(amp);
+            self.begin_pluck(amp, pick);
         } else {
             self.stagger_left = stagger_samples;
             self.pending_amp = amp;
+            self.pending_pick = pick;
         }
     }
 
-    fn begin_pluck(&mut self, amp: f32) {
+    fn begin_pluck(&mut self, amp: f32, pick: f32) {
         self.pluck_amp = amp.clamp(0.0, 1.0);
-        let cycles = (self.delay * PLUCK_LEN_CYCLES).round().max(2.0) as u32;
-        self.pluck_left = cycles;
-        self.env = self.env.max(0.55 * self.pluck_amp);
-        // Soften the existing wave so a re-pluck doesn't explode.
+        self.pluck_pick = pick.clamp(TAMBURA_PICK_RANGE.0, TAMBURA_PICK_RANGE.1);
+        // Soft pick = longer Hann burst; bright pick = shorter.
+        let cycles = 0.85 - 0.55 * self.pluck_pick;
+        let samples = (self.delay * cycles).round().max(8.0) as u32;
+        self.pluck_total = samples;
+        self.pluck_left = samples;
+        self.env = self.env.max(0.45 * self.pluck_amp);
+        // Keep more of the ringing string on a re-pluck.
         for sample in &mut self.buf {
-            *sample *= 0.35;
+            *sample *= 0.62;
         }
     }
 
@@ -98,6 +114,7 @@ impl StringLine {
         self.buf.fill(0.0);
         self.loss = 0.0;
         self.env = 0.0;
+        self.pink = 0.0;
         self.pluck_left = 0;
         self.stagger_left = 0;
         self.pending_amp = 0.0;
@@ -107,7 +124,7 @@ impl StringLine {
         if self.stagger_left > 0 {
             self.stagger_left -= 1;
             if self.stagger_left == 0 {
-                self.begin_pluck(self.pending_amp);
+                self.begin_pluck(self.pending_amp, self.pending_pick);
                 self.pending_amp = 0.0;
             }
         }
@@ -146,13 +163,24 @@ impl StringLine {
         let (reflected, buzz) = jawari_bridge(into_bridge, jawari_live);
         let mut pluck = 0.0;
         if self.pluck_left > 0 {
-            pluck = noise(&mut self.rng) * self.pluck_amp;
+            let total = self.pluck_total.max(1) as f32;
+            let phase = 1.0 - (self.pluck_left as f32 / total);
+            // Hann window — soft attack and release, not a hard click.
+            let window = 0.5 * (1.0 - (TAU * phase).cos());
+            let white = noise(&mut self.rng);
+            // One-pole pink-ish tilt; soft pick leans pink, bright pick keeps more white.
+            self.pink = 0.97 * self.pink + 0.03 * white;
+            let pick = self.pluck_pick;
+            let colored = self.pink * (0.82 - 0.45 * pick) + white * (0.18 + 0.45 * pick);
+            // Window does the softening; keep peak energy close to a classic KS pluck.
+            let level = 0.95 + 0.25 * (1.0 - pick);
+            pluck = colored * window * self.pluck_amp * level;
             self.pluck_left -= 1;
         }
         let written = flush((reflected + pluck).clamp(-4.0, 4.0));
         self.write(written);
         // Formants always see the string; jawari adds settling HF as peaks die.
-        let excite = reflected + (0.85 + 1.6 * jawari_live) * buzz + 0.2 * pluck;
+        let excite = reflected + (0.85 + 1.6 * jawari_live) * buzz + 0.15 * pluck;
         (flush(reflected), flush(excite))
     }
 
@@ -212,6 +240,11 @@ pub struct TamburaBank {
     shape: f32,
     spread: f32,
     jawari: f32,
+    pick: f32,
+    /// Nominal gap between strings in a strum (seconds).
+    strum_s: f32,
+    /// Nominal pause after a full strum (seconds).
+    cycle_s: f32,
     strings: u8,
     fifth_ratio: f32,
     auto_pluck: bool,
@@ -234,6 +267,9 @@ impl TamburaBank {
             shape: DEFAULT_TAMBURA_SHAPE,
             spread: DEFAULT_TAMBURA_SPREAD,
             jawari: DEFAULT_TAMBURA_JAWARI,
+            pick: DEFAULT_TAMBURA_PICK,
+            strum_s: DEFAULT_TAMBURA_STRUM,
+            cycle_s: DEFAULT_TAMBURA_CYCLE,
             strings: DEFAULT_TAMBURA_STRINGS as u8,
             fifth_ratio: 1.5,
             auto_pluck: false,
@@ -288,6 +324,18 @@ impl TamburaBank {
         self.jawari = value.clamp(TAMBURA_JAWARI_RANGE.0, TAMBURA_JAWARI_RANGE.1);
     }
 
+    pub fn set_pick(&mut self, value: f32) {
+        self.pick = value.clamp(TAMBURA_PICK_RANGE.0, TAMBURA_PICK_RANGE.1);
+    }
+
+    pub fn set_strum(&mut self, seconds: f32) {
+        self.strum_s = seconds.clamp(TAMBURA_STRUM_RANGE.0, TAMBURA_STRUM_RANGE.1);
+    }
+
+    pub fn set_cycle(&mut self, seconds: f32) {
+        self.cycle_s = seconds.clamp(TAMBURA_CYCLE_RANGE.0, TAMBURA_CYCLE_RANGE.1);
+    }
+
     pub fn set_strings(&mut self, value: f32) {
         let next = value
             .clamp(TAMBURA_STRINGS_RANGE.0, TAMBURA_STRINGS_RANGE.1)
@@ -326,7 +374,7 @@ impl TamburaBank {
         // Let the free-running cycle resume after this strum finishes.
         if self.auto_pluck {
             let active_n = self.active_indices().len().max(1);
-            let gap = self.strum_gap_samples();
+            let gap = self.strum_gap_nominal_samples();
             self.strumming = false;
             self.strum_pos = 0;
             self.strum_wait = gap * active_n as u32 + self.cycle_gap_samples();
@@ -347,11 +395,16 @@ impl TamburaBank {
         if amp <= 0.0 {
             return;
         }
-        let step = if stagger { self.strum_gap_samples() } else { 0 };
+        let step = if stagger {
+            self.strum_gap_nominal_samples()
+        } else {
+            0
+        };
+        let pick = self.pick;
         for (order, &index) in self.active_indices().iter().enumerate() {
             let level = LEVELS[index];
             let string_amp = amp * (0.55 + 0.35 * level);
-            self.strings_lines[index].schedule_pluck(string_amp, step * order as u32);
+            self.strings_lines[index].schedule_pluck(string_amp, pick, step * order as u32);
         }
     }
 
@@ -399,8 +452,11 @@ impl TamburaBank {
         }
         let index = active[self.strum_pos.min(active.len() - 1)];
         let level = LEVELS[index];
-        let amp = 0.55 + 0.35 * unit(&mut self.strum_rng);
-        self.strings_lines[index].begin_pluck(amp * (0.65 + 0.35 * level));
+        let amp = 0.50 + 0.30 * unit(&mut self.strum_rng);
+        // Slight pick wobble so successive strings don't sound identical.
+        let pick = (self.pick + (unit(&mut self.strum_rng) - 0.5) * 0.12)
+            .clamp(TAMBURA_PICK_RANGE.0, TAMBURA_PICK_RANGE.1);
+        self.strings_lines[index].begin_pluck(amp * (0.65 + 0.35 * level), pick);
         self.strum_pos += 1;
         if self.strum_pos >= active.len() {
             self.strumming = false;
@@ -411,16 +467,20 @@ impl TamburaBank {
         }
     }
 
-    fn strum_gap_samples(&self) -> u32 {
-        (STRUM_GAP_S * self.sample_rate).round().max(1.0) as u32
+    fn strum_gap_nominal_samples(&self) -> u32 {
+        (self.strum_s * self.sample_rate).round().max(1.0) as u32
+    }
+
+    fn strum_gap_samples(&mut self) -> u32 {
+        // ±35% jitter so the roll isn't metronomic.
+        let jitter = 0.65 + 0.70 * unit(&mut self.strum_rng);
+        (self.strum_s * jitter * self.sample_rate).round().max(1.0) as u32
     }
 
     fn cycle_gap_samples(&mut self) -> u32 {
-        let lo = CYCLE_GAP_LO_S * self.sample_rate;
-        let hi = CYCLE_GAP_HI_S * self.sample_rate;
-        (lo + (hi - lo) * unit(&mut self.strum_rng))
-            .round()
-            .max(1.0) as u32
+        // ±40% around the set cycle so repeats breathe.
+        let jitter = 0.60 + 0.80 * unit(&mut self.strum_rng);
+        (self.cycle_s * jitter * self.sample_rate).round().max(1.0) as u32
     }
 
     pub fn energy(&self) -> f32 {
@@ -527,7 +587,8 @@ mod tests {
         bank.set_strings(6.0);
         bank.set_pitch_hz(110.0);
         bank.set_auto_pluck(true);
-        for _ in 0..(RATE as usize / 2) {
+        // Allow a first string gap + pluck to settle (strum defaults are slow).
+        for _ in 0..((RATE * 1.2) as usize) {
             let _ = bank.next_sample();
         }
         assert!(bank.energy() > 1.0e-4, "auto strum never excited the bank");
@@ -545,7 +606,7 @@ mod tests {
             bank.strings_lines[0].env > bank.strings_lines[1].env + 0.05,
             "first string should lead the strum"
         );
-        for _ in 0..((STRUM_GAP_S * 1.1 * RATE) as usize) {
+        for _ in 0..((DEFAULT_TAMBURA_STRUM * 1.15 * RATE) as usize) {
             let _ = bank.next_sample();
         }
         assert!(

@@ -314,102 +314,30 @@ impl SquawkApp {
         self.keyboard_velocity = next.clamp(1, 127) as u8;
     }
 
-    fn draw_drone(&self, ui: &mut egui::Ui) {
-        ui.label(
-            "Accompaniment pad under Handpan. Root stays on the ding; Recent / Second follow what you play. Tune Resonator, Waveshape, or Tambura as main instruments — selecting one also sets which voice colours the Root here.",
-        );
-        ui.add_space(8.0);
-
-        ui.label("Root voice (accompaniment)");
-        let mut wash = self.control.ding_wash();
-        let previous = wash;
-        let selected = match wash {
-            0 => "Resonator",
-            2 => "Tambura",
-            _ => "Waveshape",
-        };
-        egui::ComboBox::from_id_source("drone_voice")
-            .selected_text(selected)
-            .show_ui(ui, |combo| {
-                combo.selectable_value(&mut wash, 0, "Resonator");
-                combo.selectable_value(&mut wash, 1, "Waveshape");
-                combo.selectable_value(&mut wash, 2, "Tambura");
-            });
-        if wash != previous {
-            self.control.set_ding_wash(wash);
-            if let Err(err) = self.settings.update_ding_wash(wash) {
-                eprintln!("Warning: Failed to persist drone voice: {err}");
-            }
-        }
-        ui.add_space(8.0);
-
-        // Root voice synth — depends on which wash is selected.
-        match wash {
-            2 => {
-                ui.label("Tambura (Root)");
-                ui.label(
-                    "Solo one string to audition, then set 6 for the full chord. Keys 1–6 work when Tambura is the main instrument.",
-                );
-                ui.add_space(4.0);
-                for &param in ParameterId::tambura() {
-                    self.draw_parameter(ui, param, true);
-                    ui.add_space(8.0);
-                }
-            }
-            1 => {
-                ui.label("Waveshape (Root)");
-                for &param in ParameterId::ding_wash() {
-                    self.draw_parameter(ui, param, true);
-                    ui.add_space(8.0);
-                }
-            }
-            _ => {
-                ui.label("Resonator (Root)");
-                ui.label("No extra voice knobs — tone comes from the formants below.");
-                ui.add_space(8.0);
-            }
-        }
-
-        ui.label("Formant (Root)");
-        ui.label("Q: positive peaks a band; negative scoops it (notch-like).");
-        ui.add_space(4.0);
-        for param in [ParameterId::FormantRate, ParameterId::FormantDepth] {
-            self.draw_parameter(ui, param, true);
-            ui.add_space(8.0);
-        }
-        for &param in ParameterId::formant() {
-            self.draw_parameter(ui, param, true);
-            ui.add_space(8.0);
-        }
-
-        ui.label("Balance");
-        for param in [
-            ParameterId::MixDing,
-            ParameterId::MixRecent,
-            ParameterId::MixSecond,
-        ] {
-            self.draw_parameter(ui, param, true);
-            ui.add_space(8.0);
-        }
-        ui.label("Band motion (Recent / Second)");
-        for &param in ParameterId::band_motion() {
-            self.draw_parameter(ui, param, true);
-            ui.add_space(8.0);
-        }
-    }
-
     fn draw_drone_voice_synth(&self, ui: &mut egui::Ui, kind: u8) {
         let name = match kind {
             2 => "Tambura",
             1 => "Waveshape",
             _ => "Resonator",
         };
-        ui.label(format!(
-            "Play pads to hold a {name} tone and tune it. Shared scale / ding with Handpan. Selecting this instrument also sets the Handpan Root accompaniment voice."
-        ));
+        let accompanying = Instrument::from_u8(self.control.instrument()) == Instrument::Handpan;
+        if accompanying {
+            ui.label(format!(
+                "{name} into the Handpan pad mix. Level / Mute / Solo / Send are on this strip; blend with the other washes freely."
+            ));
+        } else {
+            ui.label(format!(
+                "Play pads to hold a {name} tone and tune it. Shared scale / ding with Handpan. Level also feeds this wash under Handpan."
+            ));
+        }
         ui.add_space(8.0);
+        let level = match kind {
+            2 => ParameterId::MixTambura,
+            1 => ParameterId::MixWaveshape,
+            _ => ParameterId::MixDing,
+        };
         ui.label("Level");
-        self.draw_parameter(ui, ParameterId::MixDing, true);
+        self.draw_parameter(ui, level, true);
         ui.add_space(8.0);
         // Resonator ignores Shape/Spread/Brightness — only show knobs that affect the voice.
         let voice_params: &[ParameterId] = match kind {
@@ -437,7 +365,8 @@ impl SquawkApp {
                 ui.add_space(8.0);
             }
         }
-        ui.label("Formant");
+
+        ui.label("Formant (shared Root mix)");
         ui.label("Q: positive peaks a band; negative scoops it (notch-like).");
         ui.add_space(4.0);
         for param in [ParameterId::FormantRate, ParameterId::FormantDepth] {
@@ -445,6 +374,17 @@ impl SquawkApp {
             ui.add_space(8.0);
         }
         for &param in ParameterId::formant() {
+            self.draw_parameter(ui, param, true);
+            ui.add_space(8.0);
+        }
+
+        ui.label("Following pads (Recent / Second)");
+        for param in [ParameterId::MixRecent, ParameterId::MixSecond] {
+            self.draw_parameter(ui, param, true);
+            ui.add_space(8.0);
+        }
+        ui.label("Band motion");
+        for &param in ParameterId::band_motion() {
             self.draw_parameter(ui, param, true);
             ui.add_space(8.0);
         }
@@ -464,13 +404,16 @@ impl SquawkApp {
             DeskModule::Handpan => matches!(
                 self.open_module,
                 DeskModule::Handpan
-                    | DeskModule::Drone
+                    | DeskModule::Resonator
+                    | DeskModule::Waveshape
+                    | DeskModule::Tambura
                     | DeskModule::Bass
                     | DeskModule::Echo
                     | DeskModule::Reverb
             ),
             DeskModule::FmBass => self.open_module == DeskModule::FmBass,
             DeskModule::Bells => self.open_module == DeskModule::Bells,
+            // Solo playable modes stay on their strip; Handpan may also open these.
             DeskModule::Resonator => self.open_module == DeskModule::Resonator,
             DeskModule::Waveshape => self.open_module == DeskModule::Waveshape,
             DeskModule::Tambura => self.open_module == DeskModule::Tambura,
@@ -537,6 +480,23 @@ impl SquawkApp {
                     Instrument::Tambura => DeskModule::Tambura,
                     Instrument::Modal => DeskModule::Modal,
                 };
+                // Solo playable washes need an audible level; bump from silence if needed.
+                if let Some(param) = match Instrument::from_u8(instrument) {
+                    Instrument::Resonator => Some(ParameterId::MixDing),
+                    Instrument::Waveshape => Some(ParameterId::MixWaveshape),
+                    Instrument::Tambura => Some(ParameterId::MixTambura),
+                    _ => None,
+                } && self.control.parameter_value(param) <= 1.0e-4
+                {
+                    self.control
+                        .set_parameter_value(param, crate::DEFAULT_MIX_LEVEL);
+                    if let Err(err) = self
+                        .settings
+                        .update_parameter(param, crate::DEFAULT_MIX_LEVEL)
+                    {
+                        eprintln!("Warning: Failed to persist wash level: {err}");
+                    }
+                }
                 if let Err(err) = self.settings.update_instrument(instrument) {
                     eprintln!("Warning: Failed to persist instrument update: {err}");
                 }
@@ -591,63 +551,116 @@ impl SquawkApp {
     }
 
     fn draw_channel_row(&mut self, ui: &mut egui::Ui, module: DeskModule) {
+        const NAME_W: f32 = 76.0;
+        const PAN_W: f32 = 168.0;
+        const LEVEL_W: f32 = 220.0;
+        const MUTE_W: f32 = 96.0;
+        const SEND_W: f32 = 168.0;
+
         let selected = self.open_module == module && self.editor_open;
+        let row_h = ui.spacing().interact_size.y;
         ui.horizontal(|row| {
             let name = row.add_sized(
-                [76.0, row.spacing().interact_size.y],
+                [NAME_W, row_h],
                 egui::SelectableLabel::new(selected, module.name()),
             );
             if name.clicked() {
                 self.open_module = module;
                 self.editor_open = true;
-                // Keep placement if the editor is already on screen.
-            }
-
-            if let Some(param) = module.pan() {
-                row.label("Pan");
-                row.spacing_mut().slider_width = 72.0;
-                self.add_strip_slider(row, param);
-                self.draw_strip_value(row, param);
-            }
-
-            if let Some(param) = module.fader() {
-                row.label("Level");
-                row.spacing_mut().slider_width = 120.0;
-                self.add_strip_slider(row, param);
-                self.draw_strip_value(row, param);
-            }
-
-            if module == DeskModule::Handpan {
-                let muted = self.control.handpan_muted();
-                let solo = self.control.handpan_solo();
-                if row.selectable_label(muted, "Mute").clicked() {
-                    self.persist_handpan_mute_solo(!muted, solo);
-                }
-                if row.selectable_label(solo, "Solo").clicked() {
-                    self.persist_handpan_mute_solo(self.control.handpan_muted(), !solo);
+                // Soft focus for which wash inspector was last opened (not exclusive audio).
+                if let Some(wash) = match module {
+                    DeskModule::Resonator => Some(0),
+                    DeskModule::Waveshape => Some(1),
+                    DeskModule::Tambura => Some(2),
+                    _ => None,
+                } && wash != self.control.ding_wash()
+                {
+                    self.control.set_ding_wash(wash);
+                    if let Err(err) = self.settings.update_ding_wash(wash) {
+                        eprintln!("Warning: Failed to persist drone voice focus: {err}");
+                    }
                 }
             }
 
-            if let Some(mask) = module.part_mask() {
-                let muted = self.control.support_muted();
-                let solo = self.control.support_solo();
-                let is_muted = (muted & mask) == mask;
-                let is_solo = (solo & mask) == mask;
-                if row.selectable_label(is_muted, "Mute").clicked() {
-                    self.persist_parts(set_part_mask(muted, mask, !is_muted), solo);
-                }
-                if row.selectable_label(is_solo, "Solo").clicked() {
-                    let muted = self.control.support_muted();
-                    self.persist_parts(muted, set_part_mask(solo, mask, !is_solo));
-                }
-            }
+            row.allocate_ui_with_layout(
+                egui::vec2(PAN_W, row_h),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |col| {
+                    if let Some(param) = module.pan() {
+                        col.label("Pan");
+                        col.spacing_mut().slider_width = 72.0;
+                        self.add_strip_slider(col, param);
+                        self.draw_strip_value(col, param);
+                    }
+                },
+            );
 
-            if let Some(param) = module.send() {
-                row.label("Send");
-                row.spacing_mut().slider_width = 72.0;
-                self.add_strip_slider(row, param);
-                self.draw_strip_value(row, param);
-            }
+            row.allocate_ui_with_layout(
+                egui::vec2(LEVEL_W, row_h),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |col| {
+                    if let Some(param) = module.fader() {
+                        col.label("Level");
+                        col.spacing_mut().slider_width = 120.0;
+                        self.add_strip_slider(col, param);
+                        self.draw_strip_value(col, param);
+                    }
+                },
+            );
+
+            row.allocate_ui_with_layout(
+                egui::vec2(MUTE_W, row_h),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |col| {
+                    if module == DeskModule::Handpan {
+                        let muted = self.control.handpan_muted();
+                        let solo = self.control.handpan_solo();
+                        if col.selectable_label(muted, "Mute").clicked() {
+                            self.persist_handpan_mute_solo(!muted, solo);
+                        }
+                        if col.selectable_label(solo, "Solo").clicked() {
+                            self.persist_handpan_mute_solo(self.control.handpan_muted(), !solo);
+                        }
+                    } else if let Some(mask) = module.wash_mask() {
+                        let muted = self.control.wash_muted();
+                        let solo = self.control.wash_solo();
+                        let is_muted = (muted & mask) == mask;
+                        let is_solo = (solo & mask) == mask;
+                        if col.selectable_label(is_muted, "Mute").clicked() {
+                            self.persist_wash_parts(set_part_mask(muted, mask, !is_muted), solo);
+                        }
+                        if col.selectable_label(is_solo, "Solo").clicked() {
+                            let muted = self.control.wash_muted();
+                            self.persist_wash_parts(muted, set_part_mask(solo, mask, !is_solo));
+                        }
+                    } else if let Some(mask) = module.part_mask() {
+                        let muted = self.control.support_muted();
+                        let solo = self.control.support_solo();
+                        let is_muted = (muted & mask) == mask;
+                        let is_solo = (solo & mask) == mask;
+                        if col.selectable_label(is_muted, "Mute").clicked() {
+                            self.persist_parts(set_part_mask(muted, mask, !is_muted), solo);
+                        }
+                        if col.selectable_label(is_solo, "Solo").clicked() {
+                            let muted = self.control.support_muted();
+                            self.persist_parts(muted, set_part_mask(solo, mask, !is_solo));
+                        }
+                    }
+                },
+            );
+
+            row.allocate_ui_with_layout(
+                egui::vec2(SEND_W, row_h),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |col| {
+                    if let Some(param) = module.send() {
+                        col.label("Send");
+                        col.spacing_mut().slider_width = 72.0;
+                        self.add_strip_slider(col, param);
+                        self.draw_strip_value(col, param);
+                    }
+                },
+            );
         });
     }
 
@@ -658,6 +671,13 @@ impl SquawkApp {
             .update_support_parts(support_part_flags(muted), support_part_flags(solo))
         {
             eprintln!("Warning: Failed to persist accompaniment mute and solo: {err}");
+        }
+    }
+
+    fn persist_wash_parts(&self, muted: u8, solo: u8) {
+        self.control.set_wash_parts(muted, solo);
+        if let Err(err) = self.settings.update_wash_parts(muted, solo) {
+            eprintln!("Warning: Failed to persist wash mute and solo: {err}");
         }
     }
 
@@ -1147,7 +1167,6 @@ impl SquawkApp {
                     ui.add_space(8.0);
                 }
             }
-            DeskModule::Drone => self.draw_drone(ui),
             DeskModule::Resonator => self.draw_drone_voice_synth(ui, 0),
             DeskModule::Waveshape => self.draw_drone_voice_synth(ui, 1),
             DeskModule::Tambura => self.draw_drone_voice_synth(ui, 2),
@@ -1852,7 +1871,6 @@ impl eframe::App for SquawkApp {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DeskModule {
     Handpan,
-    Drone,
     Bass,
     Echo,
     Reverb,
@@ -1864,12 +1882,11 @@ enum DeskModule {
     Tambura,
 }
 
-/// Support parts 0–2 (Root / Recent / Second) mute and solo together.
-const DRONE_PART_MASK: u8 = 0b0111;
-
-const HANDPAN_STRIPS: [DeskModule; 5] = [
+const HANDPAN_STRIPS: [DeskModule; 7] = [
     DeskModule::Handpan,
-    DeskModule::Drone,
+    DeskModule::Resonator,
+    DeskModule::Waveshape,
+    DeskModule::Tambura,
     DeskModule::Bass,
     DeskModule::Echo,
     DeskModule::Reverb,
@@ -1891,7 +1908,6 @@ impl DeskModule {
     fn name(self) -> &'static str {
         match self {
             DeskModule::Handpan => "Handpan",
-            DeskModule::Drone => "Drone",
             DeskModule::Bass | DeskModule::FmBass => "Bass",
             DeskModule::Echo => "Echo",
             DeskModule::Bells => "Bells",
@@ -1906,13 +1922,11 @@ impl DeskModule {
     fn fader(self) -> Option<ParameterId> {
         match self {
             DeskModule::Handpan => Some(ParameterId::MixHandpan),
-            // Balances live in the Drone inspector (Root / Recent / Second).
-            DeskModule::Drone => None,
             DeskModule::Bass => Some(ParameterId::MixBass),
             DeskModule::Echo | DeskModule::Bells => Some(ParameterId::MixTaps),
-            DeskModule::Resonator | DeskModule::Waveshape | DeskModule::Tambura => {
-                Some(ParameterId::MixDing)
-            }
+            DeskModule::Resonator => Some(ParameterId::MixDing),
+            DeskModule::Waveshape => Some(ParameterId::MixWaveshape),
+            DeskModule::Tambura => Some(ParameterId::MixTambura),
             DeskModule::Modal => Some(ParameterId::OutputGain),
             DeskModule::FmBass => Some(ParameterId::FmBassLevel),
             DeskModule::Reverb => None,
@@ -1922,7 +1936,6 @@ impl DeskModule {
     fn pan(self) -> Option<ParameterId> {
         match self {
             DeskModule::Handpan => Some(ParameterId::PanHandpan),
-            DeskModule::Drone => Some(ParameterId::PanDing),
             DeskModule::Bass => Some(ParameterId::PanBass),
             DeskModule::Echo => Some(ParameterId::PanEcho),
             DeskModule::Reverb
@@ -1938,33 +1951,32 @@ impl DeskModule {
     fn send(self) -> Option<ParameterId> {
         match self {
             DeskModule::Handpan => Some(ParameterId::ReverbHandpan),
-            DeskModule::Drone => Some(ParameterId::ReverbDing),
+            // Shared pad-bus send (Root + following pads).
+            DeskModule::Resonator | DeskModule::Waveshape | DeskModule::Tambura => {
+                Some(ParameterId::ReverbDing)
+            }
             DeskModule::Bass => Some(ParameterId::ReverbBass),
             DeskModule::Echo => Some(ParameterId::ReverbEcho),
-            DeskModule::Reverb
-            | DeskModule::Modal
-            | DeskModule::FmBass
-            | DeskModule::Bells
-            | DeskModule::Resonator
-            | DeskModule::Waveshape
-            | DeskModule::Tambura => None,
+            DeskModule::Reverb | DeskModule::Modal | DeskModule::FmBass | DeskModule::Bells => None,
         }
     }
 
-    /// Support mute/solo bits for this strip. Drone gates Root+Recent+Second together.
+    /// Resonator / Waveshape / Tambura mute-solo bits.
+    fn wash_mask(self) -> Option<u8> {
+        match self {
+            DeskModule::Resonator => Some(1 << 0),
+            DeskModule::Waveshape => Some(1 << 1),
+            DeskModule::Tambura => Some(1 << 2),
+            _ => None,
+        }
+    }
+
+    /// Support mute/solo bits for Bass / Echo strips.
     fn part_mask(self) -> Option<u8> {
         match self {
-            DeskModule::Drone => Some(DRONE_PART_MASK),
             DeskModule::Bass => Some(1 << 3),
             DeskModule::Echo => Some(1 << 4),
-            DeskModule::Handpan
-            | DeskModule::Reverb
-            | DeskModule::Modal
-            | DeskModule::FmBass
-            | DeskModule::Bells
-            | DeskModule::Resonator
-            | DeskModule::Waveshape
-            | DeskModule::Tambura => None,
+            _ => None,
         }
     }
 }

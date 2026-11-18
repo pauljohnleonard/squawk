@@ -76,7 +76,11 @@ pub use support::{
     SUPPORT_PULSE_RANGE, SUPPORT_WANDER_RANGE, SUPPORT_WIDTH_RANGE, Support, SupportParts,
     stereo_pan, support_part_flags, support_part_mask,
 };
-pub use tambura::{DEFAULT_TAMBURA_JAWARI, TAMBURA_JAWARI_RANGE, TamburaBank};
+pub use tambura::{
+    DEFAULT_TAMBURA_CYCLE, DEFAULT_TAMBURA_JAWARI, DEFAULT_TAMBURA_PICK, DEFAULT_TAMBURA_STRUM,
+    TAMBURA_CYCLE_RANGE, TAMBURA_JAWARI_RANGE, TAMBURA_PICK_RANGE, TAMBURA_STRUM_RANGE,
+    TamburaBank,
+};
 pub use voice::StrikeVoice;
 
 #[derive(Debug, Clone, Copy)]

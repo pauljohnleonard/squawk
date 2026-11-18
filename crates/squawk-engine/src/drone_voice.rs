@@ -4,7 +4,11 @@
 //! fade so knobs can be auditioned. Accompaniment still uses Support's wash
 //! path; these modules are the main-instrument face of each voice.
 
-use crate::tambura::{DEFAULT_TAMBURA_JAWARI, TAMBURA_JAWARI_RANGE, TamburaBank};
+use crate::tambura::{
+    DEFAULT_TAMBURA_CYCLE, DEFAULT_TAMBURA_JAWARI, DEFAULT_TAMBURA_PICK, DEFAULT_TAMBURA_STRUM,
+    TAMBURA_CYCLE_RANGE, TAMBURA_JAWARI_RANGE, TAMBURA_PICK_RANGE, TAMBURA_STRUM_RANGE,
+    TamburaBank,
+};
 use crate::voice::StrikeVoice;
 use core::f32::consts::{LN_2, TAU};
 
@@ -116,6 +120,9 @@ pub struct DroneVoice {
     brightness: f32,
     strings: u8,
     jawari: f32,
+    pick: f32,
+    strum: f32,
+    cycle: f32,
     formant_hz: [f32; 3],
     formant_q: [f32; 3],
     formant_rate: f32,
@@ -151,6 +158,9 @@ impl DroneVoice {
             brightness: DEFAULT_DRONE_BRIGHTNESS,
             strings: DEFAULT_DRONE_STRINGS as u8,
             jawari: DEFAULT_TAMBURA_JAWARI,
+            pick: DEFAULT_TAMBURA_PICK,
+            strum: DEFAULT_TAMBURA_STRUM,
+            cycle: DEFAULT_TAMBURA_CYCLE,
             formant_hz: [
                 DEFAULT_DRONE_FORMANT_1,
                 DEFAULT_DRONE_FORMANT_2,
@@ -170,6 +180,9 @@ impl DroneVoice {
                 bank.set_shape(DEFAULT_DRONE_SHAPE);
                 bank.set_spread(DEFAULT_DRONE_SPREAD);
                 bank.set_jawari(DEFAULT_TAMBURA_JAWARI);
+                bank.set_pick(DEFAULT_TAMBURA_PICK);
+                bank.set_strum(DEFAULT_TAMBURA_STRUM);
+                bank.set_cycle(DEFAULT_TAMBURA_CYCLE);
                 bank.set_strings(DEFAULT_DRONE_STRINGS);
                 bank
             },
@@ -210,6 +223,21 @@ impl DroneVoice {
     pub fn set_jawari(&mut self, value: f32) {
         self.jawari = value.clamp(TAMBURA_JAWARI_RANGE.0, TAMBURA_JAWARI_RANGE.1);
         self.tambura.set_jawari(self.jawari);
+    }
+
+    pub fn set_pick(&mut self, value: f32) {
+        self.pick = value.clamp(TAMBURA_PICK_RANGE.0, TAMBURA_PICK_RANGE.1);
+        self.tambura.set_pick(self.pick);
+    }
+
+    pub fn set_strum(&mut self, value: f32) {
+        self.strum = value.clamp(TAMBURA_STRUM_RANGE.0, TAMBURA_STRUM_RANGE.1);
+        self.tambura.set_strum(self.strum);
+    }
+
+    pub fn set_cycle(&mut self, value: f32) {
+        self.cycle = value.clamp(TAMBURA_CYCLE_RANGE.0, TAMBURA_CYCLE_RANGE.1);
+        self.tambura.set_cycle(self.cycle);
     }
 
     pub fn set_formant(&mut self, index: usize, hz: f32) {
@@ -300,6 +328,9 @@ impl DroneVoice {
         self.tambura.set_shape(self.shape);
         self.tambura.set_spread(self.spread);
         self.tambura.set_jawari(self.jawari);
+        self.tambura.set_pick(self.pick);
+        self.tambura.set_strum(self.strum);
+        self.tambura.set_cycle(self.cycle);
         self.tambura.set_strings(self.strings as f32);
         self.tambura.set_auto_pluck(true);
         self.tambura.next_sample()
