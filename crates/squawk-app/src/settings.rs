@@ -151,6 +151,8 @@ struct StoredSettings {
     ding_brightness: f32,
     #[serde(default = "default_ding_strings")]
     ding_strings: f32,
+    #[serde(default = "default_tambura_jawari")]
+    tambura_jawari: f32,
     #[serde(default = "default_ding_formant_1")]
     ding_formant_1: f32,
     #[serde(default = "default_ding_formant_2")]
@@ -218,6 +220,18 @@ struct StoredSettings {
     fm_bass_feedback: f32,
     #[serde(default = "default_fm_bass_level")]
     fm_bass_level: f32,
+    #[serde(default = "default_bass_line_amount")]
+    bass_line_amount: f32,
+    #[serde(default = "default_bass_line_variation")]
+    bass_line_variation: f32,
+    #[serde(default = "default_bells_decay")]
+    bells_decay: f32,
+    #[serde(default = "default_bells_ratio")]
+    bells_ratio: f32,
+    #[serde(default = "default_bells_index")]
+    bells_index: f32,
+    #[serde(default = "default_bells_index_decay")]
+    bells_index_decay: f32,
     #[serde(default)]
     fm_bass_presets: HashMap<String, StoredFmBassPreset>,
     #[serde(default = "default_groove_click_enabled")]
@@ -288,6 +302,7 @@ impl Default for StoredSettings {
             ding_spread: crate::DEFAULT_DING_SPREAD,
             ding_brightness: crate::DEFAULT_DING_BRIGHTNESS,
             ding_strings: crate::DEFAULT_DING_STRINGS,
+            tambura_jawari: crate::DEFAULT_TAMBURA_JAWARI,
             ding_formant_1: crate::DEFAULT_DING_FORMANT_1,
             ding_formant_2: crate::DEFAULT_DING_FORMANT_2,
             ding_formant_3: crate::DEFAULT_DING_FORMANT_3,
@@ -321,6 +336,12 @@ impl Default for StoredSettings {
             fm_bass_index_decay: crate::DEFAULT_FM_BASS_INDEX_DECAY,
             fm_bass_feedback: crate::DEFAULT_FM_BASS_FEEDBACK,
             fm_bass_level: crate::DEFAULT_FM_BASS_LEVEL,
+            bass_line_amount: crate::DEFAULT_BASS_LINE_AMOUNT,
+            bass_line_variation: crate::DEFAULT_BASS_LINE_VARIATION,
+            bells_decay: crate::DEFAULT_BELLS_DECAY,
+            bells_ratio: crate::DEFAULT_BELLS_RATIO,
+            bells_index: crate::DEFAULT_BELLS_INDEX,
+            bells_index_decay: crate::DEFAULT_BELLS_INDEX_DECAY,
             fm_bass_presets: HashMap::new(),
             groove_click_enabled: crate::DEFAULT_GROOVE_CLICK_ENABLED,
             groove_auto_lock: crate::DEFAULT_GROOVE_AUTO_LOCK,
@@ -383,6 +404,7 @@ pub(crate) struct SettingsSnapshot {
     pub ding_spread: f32,
     pub ding_brightness: f32,
     pub ding_strings: f32,
+    pub tambura_jawari: f32,
     pub ding_formant_1: f32,
     pub ding_formant_2: f32,
     pub ding_formant_3: f32,
@@ -415,6 +437,12 @@ pub(crate) struct SettingsSnapshot {
     pub fm_bass_index_decay: f32,
     pub fm_bass_feedback: f32,
     pub fm_bass_level: f32,
+    pub bass_line_amount: f32,
+    pub bass_line_variation: f32,
+    pub bells_decay: f32,
+    pub bells_ratio: f32,
+    pub bells_index: f32,
+    pub bells_index_decay: f32,
     pub groove_click_enabled: bool,
     pub groove_auto_lock: bool,
     pub support_muted: u8,
@@ -490,6 +518,7 @@ impl From<StoredSettings> for SettingsSnapshot {
             ding_spread: ParameterId::DingSpread.clamp(value.ding_spread),
             ding_brightness: ParameterId::DingBrightness.clamp(value.ding_brightness),
             ding_strings: ParameterId::DingStrings.clamp(value.ding_strings),
+            tambura_jawari: ParameterId::TamburaJawari.clamp(value.tambura_jawari),
             ding_formant_1: ParameterId::DingFormant1.clamp(value.ding_formant_1),
             ding_formant_2: ParameterId::DingFormant2.clamp(value.ding_formant_2),
             ding_formant_3: ParameterId::DingFormant3.clamp(value.ding_formant_3),
@@ -523,6 +552,12 @@ impl From<StoredSettings> for SettingsSnapshot {
             fm_bass_index_decay: ParameterId::FmBassIndexDecay.clamp(value.fm_bass_index_decay),
             fm_bass_feedback: ParameterId::FmBassFeedback.clamp(value.fm_bass_feedback),
             fm_bass_level: ParameterId::FmBassLevel.clamp(value.fm_bass_level),
+            bass_line_amount: ParameterId::BassLineAmount.clamp(value.bass_line_amount),
+            bass_line_variation: ParameterId::BassLineVariation.clamp(value.bass_line_variation),
+            bells_decay: ParameterId::BellsDecay.clamp(value.bells_decay),
+            bells_ratio: ParameterId::BellsRatio.clamp(value.bells_ratio),
+            bells_index: ParameterId::BellsIndex.clamp(value.bells_index),
+            bells_index_decay: ParameterId::BellsIndexDecay.clamp(value.bells_index_decay),
             groove_click_enabled: value.groove_click_enabled,
             groove_auto_lock: value.groove_auto_lock,
             support_muted: squawk_engine::support_part_mask(value.support_muted),
@@ -607,6 +642,7 @@ impl SettingsStore {
                 ParameterId::DingSpread => data.ding_spread = clamped,
                 ParameterId::DingBrightness => data.ding_brightness = clamped,
                 ParameterId::DingStrings => data.ding_strings = clamped,
+                ParameterId::TamburaJawari => data.tambura_jawari = clamped,
                 ParameterId::DingFormant1 => data.ding_formant_1 = clamped,
                 ParameterId::DingFormant2 => data.ding_formant_2 = clamped,
                 ParameterId::DingFormant3 => data.ding_formant_3 = clamped,
@@ -639,6 +675,12 @@ impl SettingsStore {
                 ParameterId::FmBassIndexDecay => data.fm_bass_index_decay = clamped,
                 ParameterId::FmBassFeedback => data.fm_bass_feedback = clamped,
                 ParameterId::FmBassLevel => data.fm_bass_level = clamped,
+                ParameterId::BassLineAmount => data.bass_line_amount = clamped,
+                ParameterId::BassLineVariation => data.bass_line_variation = clamped,
+                ParameterId::BellsDecay => data.bells_decay = clamped,
+                ParameterId::BellsRatio => data.bells_ratio = clamped,
+                ParameterId::BellsIndex => data.bells_index = clamped,
+                ParameterId::BellsIndexDecay => data.bells_index_decay = clamped,
             }
         }
         self.persist_current_state()
@@ -715,7 +757,11 @@ impl SettingsStore {
     pub(crate) fn update_instrument(&self, instrument: u8) -> Result<()> {
         {
             let mut data = self.state.lock();
-            data.instrument = crate::Instrument::from_u8(instrument).as_u8();
+            let instrument = crate::Instrument::from_u8(instrument);
+            data.instrument = instrument.as_u8();
+            if let Some(wash) = instrument.drone_wash() {
+                data.ding_wash = wash.min(2);
+            }
         }
         self.persist_current_state()
     }
@@ -842,6 +888,7 @@ impl SettingsStore {
             data.ding_spread = crate::DEFAULT_DING_SPREAD;
             data.ding_brightness = crate::DEFAULT_DING_BRIGHTNESS;
             data.ding_strings = crate::DEFAULT_DING_STRINGS;
+            data.tambura_jawari = crate::DEFAULT_TAMBURA_JAWARI;
             data.ding_formant_1 = crate::DEFAULT_DING_FORMANT_1;
             data.ding_formant_2 = crate::DEFAULT_DING_FORMANT_2;
             data.ding_formant_3 = crate::DEFAULT_DING_FORMANT_3;
@@ -875,6 +922,12 @@ impl SettingsStore {
             data.fm_bass_index_decay = crate::DEFAULT_FM_BASS_INDEX_DECAY;
             data.fm_bass_feedback = crate::DEFAULT_FM_BASS_FEEDBACK;
             data.fm_bass_level = crate::DEFAULT_FM_BASS_LEVEL;
+            data.bass_line_amount = crate::DEFAULT_BASS_LINE_AMOUNT;
+            data.bass_line_variation = crate::DEFAULT_BASS_LINE_VARIATION;
+            data.bells_decay = crate::DEFAULT_BELLS_DECAY;
+            data.bells_ratio = crate::DEFAULT_BELLS_RATIO;
+            data.bells_index = crate::DEFAULT_BELLS_INDEX;
+            data.bells_index_decay = crate::DEFAULT_BELLS_INDEX_DECAY;
             data.groove_click_enabled = crate::DEFAULT_GROOVE_CLICK_ENABLED;
             data.groove_auto_lock = crate::DEFAULT_GROOVE_AUTO_LOCK;
             data.support_muted = default_support_part_flags();
@@ -1110,6 +1163,10 @@ fn default_ding_strings() -> f32 {
     crate::DEFAULT_DING_STRINGS
 }
 
+fn default_tambura_jawari() -> f32 {
+    crate::DEFAULT_TAMBURA_JAWARI
+}
+
 fn default_ding_formant_1() -> f32 {
     crate::DEFAULT_DING_FORMANT_1
 }
@@ -1184,6 +1241,30 @@ fn default_fm_bass_feedback() -> f32 {
 
 fn default_fm_bass_level() -> f32 {
     crate::DEFAULT_FM_BASS_LEVEL
+}
+
+fn default_bass_line_amount() -> f32 {
+    crate::DEFAULT_BASS_LINE_AMOUNT
+}
+
+fn default_bass_line_variation() -> f32 {
+    crate::DEFAULT_BASS_LINE_VARIATION
+}
+
+fn default_bells_decay() -> f32 {
+    crate::DEFAULT_BELLS_DECAY
+}
+
+fn default_bells_ratio() -> f32 {
+    crate::DEFAULT_BELLS_RATIO
+}
+
+fn default_bells_index() -> f32 {
+    crate::DEFAULT_BELLS_INDEX
+}
+
+fn default_bells_index_decay() -> f32 {
+    crate::DEFAULT_BELLS_INDEX_DECAY
 }
 
 fn default_groove_click_enabled() -> bool {

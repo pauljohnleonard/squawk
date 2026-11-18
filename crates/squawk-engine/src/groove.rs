@@ -1,7 +1,8 @@
 //! Event-based tempo and phase lock from pad strikes.
 //!
-//! Separate from Support so the prototype can be tweaked or discarded. Strikes
-//! steer a free-running beat phase; a soft click fades in with confidence.
+//! Simple path: the first four accepted taps set the period (mean of the three
+//! gaps), snap beat 0 to the fourth tap, and lock. The click then free-runs.
+//! Unlock clears the count so four fresh taps can lock again.
 
 use core::f32::consts::TAU;
 
@@ -20,8 +21,9 @@ pub const GROOVE_CLICK_LEVEL_RANGE: (f32, f32) = (0.0, 1.0);
 const FLAM_S: f32 = 0.080;
 const PAUSE_S: f32 = 2.5;
 const IOI_CAP: usize = 12;
-const MIN_IOIS_FOR_TEMPO: u8 = 4;
-const LOCK_CONFIDENCE: f32 = 0.55;
+/// Four taps → three gaps → lock. Kept for confidence-based status while learning.
+const MIN_IOIS_FOR_TEMPO: u8 = 3;
+const TAPS_TO_LOCK: u8 = 4;
 /// After a manual unlock, auto-lock waits until confidence falls below this.
 const AUTO_REARM_CONFIDENCE: f32 = 0.35;
 const CLICK_HZ: f32 = 1_850.0;
@@ -75,6 +77,8 @@ pub struct GrooveTracker {
     click_inc: f32,
     click_decay: f32,
     silence_s: f32,
+    /// Accepted taps since last unlock (flam-filtered). Lock fires at [`TAPS_TO_LOCK`].
+    taps_since_unlock: u8,
 }
 
 impl GrooveTracker {
@@ -105,6 +109,7 @@ impl GrooveTracker {
             click_inc: TAU * CLICK_HZ * dt,
             click_decay: (-dt / CLICK_DECAY_S).exp(),
             silence_s: 0.0,
+            taps_since_unlock: 0,
         }
     }
 
@@ -128,12 +133,13 @@ impl GrooveTracker {
         self.auto_lock = enabled;
     }
 
-    /// Freeze or release the tempo estimate. Unlocking disarms auto-lock until
-    /// confidence falls and builds again.
+    /// Freeze or release the tempo estimate. Unlocking clears the tap count so
+    /// four fresh taps can lock again.
     pub fn set_tempo_locked(&mut self, locked: bool) {
         self.tempo_locked = locked;
         if !locked {
-            self.auto_arm = false;
+            self.taps_since_unlock = 0;
+            self.auto_arm = true;
         }
     }
 
@@ -168,14 +174,23 @@ impl GrooveTracker {
             }
             if gap_s < PAUSE_S {
                 self.push_ioi(gap_s);
+            } else if !self.tempo_locked {
+                // Long pause before lock: start the four-tap count fresh.
+                self.taps_since_unlock = 0;
+                self.ioi_n = 0;
+                self.ioi_i = 0;
+                self.iois_seen = 0;
             }
         }
         self.last_onset = Some(now);
         self.silence_s = 0.0;
+        if !self.tempo_locked {
+            self.taps_since_unlock = self.taps_since_unlock.saturating_add(1);
+        }
         self.estimate_period();
         self.pull_phase();
         self.update_confidence();
-        self.maybe_auto_lock();
+        self.maybe_four_tap_lock();
     }
 
     /// Advance one sample. Returns the soft metronome click (may be 0).
@@ -257,17 +272,46 @@ impl GrooveTracker {
         }
     }
 
-    fn maybe_auto_lock(&mut self) {
+    /// Lock after four taps: period = mean of the three gaps, phase = 0 on this tap.
+    fn maybe_four_tap_lock(&mut self) {
         if self.confidence < AUTO_REARM_CONFIDENCE {
             self.auto_arm = true;
         }
-        if self.auto_lock
-            && self.auto_arm
-            && !self.tempo_locked
-            && self.confidence >= LOCK_CONFIDENCE
-        {
-            self.tempo_locked = true;
+        if !self.auto_lock || !self.auto_arm || self.tempo_locked {
+            return;
         }
+        if self.taps_since_unlock < TAPS_TO_LOCK || self.ioi_n < (TAPS_TO_LOCK as usize - 1) {
+            return;
+        }
+        let mean = self.mean_recent_iois(TAPS_TO_LOCK as usize - 1);
+        if mean <= 0.0 {
+            return;
+        }
+        // Use the tapped gaps directly — no half/double guess — so the click
+        // matches what the player just played.
+        self.period_s = mean.clamp(60.0 / GROOVE_BPM_MAX, 60.0 / GROOVE_BPM_MIN);
+        self.phase = 0.0;
+        self.phase_acquired = true;
+        self.tempo_locked = true;
+        self.confidence = 1.0;
+        if self.click_enabled && self.click_level > 0.05 {
+            self.click_amp = self.click_level * 0.55;
+            self.click_phase = 0.0;
+        }
+    }
+
+    fn mean_recent_iois(&self, count: usize) -> f32 {
+        let n = self.ioi_n.min(count).max(1);
+        let mut sum = 0.0_f32;
+        for age in 0..n {
+            let slot = if self.ioi_n < IOI_CAP {
+                self.ioi_n - 1 - age
+            } else {
+                (self.ioi_i + IOI_CAP - 1 - age) % IOI_CAP
+            };
+            sum += self.iois_s[slot];
+        }
+        sum / n as f32
     }
 
     fn push_ioi(&mut self, gap_s: f32) {
@@ -285,30 +329,16 @@ impl GrooveTracker {
         if self.tempo_locked {
             return;
         }
-        if self.ioi_n < MIN_IOIS_FOR_TEMPO as usize && self.iois_seen < MIN_IOIS_FOR_TEMPO {
+        // Period is set firmly at four-tap lock; before that just track the mean
+        // so the UI BPM readout stays sensible while learning.
+        if self.ioi_n == 0 {
             return;
         }
-        let median = self.median_ioi();
-        if median <= 0.0 {
+        let mean = self.mean_recent_iois(self.ioi_n.min(3));
+        if mean <= 0.0 {
             return;
         }
-        let chosen = prefer_mid_range(median);
-        let alpha = 0.15 + 0.25 * self.sensitivity;
-        self.period_s += (chosen - self.period_s) * alpha;
-        self.period_s = self
-            .period_s
-            .clamp(60.0 / GROOVE_BPM_MAX, 60.0 / GROOVE_BPM_MIN);
-    }
-
-    fn median_ioi(&self) -> f32 {
-        let n = self.ioi_n.max(1);
-        let mut values = self.iois_s;
-        values[..n].sort_by(|a, b| a.total_cmp(b));
-        if n % 2 == 1 {
-            values[n / 2]
-        } else {
-            0.5 * (values[n / 2 - 1] + values[n / 2])
-        }
+        self.period_s = mean.clamp(60.0 / GROOVE_BPM_MAX, 60.0 / GROOVE_BPM_MIN);
     }
 
     fn pull_phase(&mut self) {
@@ -390,30 +420,6 @@ impl GrooveTracker {
     }
 }
 
-/// Pick period, 2×, or ½ so the BPM sits in range and near the preferred mid.
-fn prefer_mid_range(period_s: f32) -> f32 {
-    let candidates = [period_s * 0.5, period_s, period_s * 2.0];
-    let mut best = period_s;
-    let mut best_cost = f32::MAX;
-    for candidate in candidates {
-        let bpm = 60.0 / candidate.max(1.0e-3);
-        if !(GROOVE_BPM_MIN..=GROOVE_BPM_MAX).contains(&bpm) {
-            continue;
-        }
-        let cost = (bpm - GROOVE_BPM_PREF).abs();
-        if cost < best_cost {
-            best_cost = cost;
-            best = candidate;
-        }
-    }
-    // If nothing landed in range, clamp the raw period into range.
-    if best_cost == f32::MAX {
-        period_s.clamp(60.0 / GROOVE_BPM_MAX, 60.0 / GROOVE_BPM_MIN)
-    } else {
-        best
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -440,90 +446,47 @@ mod tests {
     }
 
     #[test]
-    fn steady_eighty_bpm_locks_near_eighty() {
+    fn four_taps_lock_at_played_tempo() {
         let mut groove = GrooveTracker::new(RATE);
-        groove.set_sensitivity(0.8);
-        strike_every(&mut groove, 60.0 / 80.0, 12);
+        groove.set_click_level(1.0);
+        strike_every(&mut groove, 60.0 / 80.0, 4);
         let snap = groove.snapshot();
+        assert!(snap.locked, "expected lock on the fourth tap");
         assert!(
-            (snap.bpm - 80.0).abs() < 8.0,
-            "expected ~80 bpm, got {}",
+            (snap.bpm - 80.0).abs() < 4.0,
+            "expected ~80 bpm from tapped gaps, got {}",
             snap.bpm
         );
-        assert!(
-            snap.confidence > 0.35,
-            "confidence {} too low",
-            snap.confidence
-        );
+        assert!((snap.confidence - 1.0).abs() < 0.01);
     }
 
     #[test]
-    fn half_time_ambiguity_prefers_mid_range() {
-        // 40 BPM IOIs (1.5 s): doubling lands at 80, nearer 75 than 40.
-        let chosen = prefer_mid_range(1.5);
-        let bpm = 60.0 / chosen;
-        assert!(
-            (bpm - 80.0).abs() < 1.0,
-            "expected ~80 from 40bpm IOI, got {bpm}"
-        );
-
-        // 160 BPM raw (0.375 s) is out of max; doubling period → 80.
-        let chosen = prefer_mid_range(0.375);
-        let bpm = 60.0 / chosen;
-        assert!(
-            (bpm - 80.0).abs() < 1.0,
-            "expected ~80 from 160bpm IOI, got {bpm}"
-        );
-    }
-
-    #[test]
-    fn confidence_brings_click_energy() {
+    fn three_taps_do_not_lock() {
         let mut groove = GrooveTracker::new(RATE);
-        groove.set_sensitivity(0.9);
-        groove.set_click_level(1.0);
-        strike_every(&mut groove, 60.0 / 90.0, 14);
-        assert!(groove.snapshot().confidence > 0.3);
-
-        let mut peak = 0.0_f32;
-        // Run a bit more than one period looking for a click.
-        for _ in 0..(RATE as usize) {
-            peak = peak.max(groove.tick().abs());
-        }
-        assert!(peak > 0.01, "expected click energy, peak {peak}");
+        strike_every(&mut groove, 60.0 / 90.0, 3);
+        assert!(!groove.snapshot().locked);
     }
 
     #[test]
-    fn steady_half_second_iois_raise_confidence_and_hard_lock_holds_grid() {
-        // ~120 BPM IOIs → mid-range bias picks ~60 BPM (2× period).
+    fn locked_click_follows_tapped_period() {
         let mut groove = GrooveTracker::new(RATE);
-        groove.set_sensitivity(0.85);
-        groove.set_phase_pull(0.5);
         groove.set_click_level(1.0);
-        let ioi = 0.5_f32;
-        strike_every(&mut groove, ioi, 16);
+        let ioi = 0.5_f32; // 120 BPM
+        strike_every(&mut groove, ioi, 4);
         let snap = groove.snapshot();
-        assert!(
-            snap.confidence > 0.55,
-            "confidence {} should rise with steady IOIs",
-            snap.confidence
-        );
-        assert!(
-            (snap.bpm - 60.0).abs() < 8.0,
-            "expected ~60 bpm from mid-range bias, got {}",
-            snap.bpm
-        );
         assert!(snap.locked);
+        assert!(
+            (snap.bpm - 120.0).abs() < 4.0,
+            "expected ~120 bpm (no half-time guess), got {}",
+            snap.bpm
+        );
 
-        // After hard lock, clicks free-run at the locked period even if strikes
-        // land late — phase pull must not chase them.
-        let period_samples = (60.0 / snap.bpm * RATE).round() as u64;
+        let period_samples = (ioi * RATE).round() as u64;
         let mut clicks = Vec::new();
         let mut prev = 0.0_f32;
-        // Ignore sine zero-crossings inside one click envelope.
         let mute_after = period_samples / 4;
         let mut armed_at = 0u64;
         for sample in 0..(period_samples * 6) {
-            // Deliberately yank phase with late strikes every half period.
             if sample > 0 && sample.is_multiple_of(period_samples / 2) {
                 groove.hear(60, 0.8);
             }
@@ -550,30 +513,29 @@ mod tests {
     }
 
     #[test]
-    fn pause_drops_confidence() {
+    fn pause_before_lock_resets_tap_count() {
         let mut groove = GrooveTracker::new(RATE);
-        groove.set_auto_lock(false);
-        groove.set_sensitivity(0.9);
-        strike_every(&mut groove, 60.0 / 90.0, 12);
-        let before = groove.snapshot().confidence;
-        assert!(before > 0.25);
-        for _ in 0..(RATE as usize * 4) {
+        strike_every(&mut groove, 60.0 / 100.0, 2);
+        assert!(!groove.snapshot().locked);
+        for _ in 0..(RATE as usize * 3) {
             let _ = groove.tick();
         }
-        let after = groove.snapshot().confidence;
-        assert!(after < before * 0.5, "before {before} after {after}");
-        assert_eq!(groove.snapshot().status, GrooveStatus::Lost);
+        strike_every(&mut groove, 60.0 / 100.0, 3);
+        assert!(
+            !groove.snapshot().locked,
+            "pause should have cleared the early taps"
+        );
+        strike_every(&mut groove, 60.0 / 100.0, 1);
+        assert!(groove.snapshot().locked);
     }
 
     #[test]
     fn auto_lock_freezes_tempo_against_new_iois() {
         let mut groove = GrooveTracker::new(RATE);
-        groove.set_sensitivity(0.9);
-        strike_every(&mut groove, 60.0 / 80.0, 14);
+        strike_every(&mut groove, 60.0 / 80.0, 4);
         let snap = groove.snapshot();
-        assert!(snap.locked, "expected auto-lock after steady playing");
+        assert!(snap.locked, "expected auto-lock after four taps");
         let locked_bpm = snap.bpm;
-        // Play much faster: without a freeze this would drag the estimate up.
         strike_every(&mut groove, 60.0 / 120.0, 10);
         let after = groove.snapshot();
         assert!(after.locked);
@@ -587,9 +549,8 @@ mod tests {
     #[test]
     fn locked_click_stays_up_through_a_pause() {
         let mut groove = GrooveTracker::new(RATE);
-        groove.set_sensitivity(0.9);
         groove.set_click_level(1.0);
-        strike_every(&mut groove, 60.0 / 90.0, 14);
+        strike_every(&mut groove, 60.0 / 90.0, 4);
         assert!(groove.snapshot().locked);
         let conf_before = groove.snapshot().confidence;
         for _ in 0..(RATE as usize * 4) {
@@ -608,16 +569,16 @@ mod tests {
     }
 
     #[test]
-    fn manual_unlock_allows_tempo_to_follow_again() {
+    fn manual_unlock_allows_four_fresh_taps() {
         let mut groove = GrooveTracker::new(RATE);
-        groove.set_sensitivity(0.9);
-        strike_every(&mut groove, 60.0 / 70.0, 14);
+        strike_every(&mut groove, 60.0 / 70.0, 4);
         assert!(groove.snapshot().locked);
         let locked_bpm = groove.snapshot().bpm;
         groove.set_tempo_locked(false);
         assert!(!groove.snapshot().locked);
-        strike_every(&mut groove, 60.0 / 110.0, 14);
+        strike_every(&mut groove, 60.0 / 110.0, 4);
         let after = groove.snapshot();
+        assert!(after.locked);
         assert!(
             (after.bpm - locked_bpm).abs() > 8.0,
             "tempo should move after unlock: was {locked_bpm}, now {}",

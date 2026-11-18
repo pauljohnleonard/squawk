@@ -206,8 +206,8 @@ impl SquawkApp {
                             continue;
                         }
 
-                        let handpan_keys =
-                            Instrument::from_u8(self.control.instrument()).uses_handpan_keys();
+                        let instrument = Instrument::from_u8(self.control.instrument());
+                        let handpan_keys = instrument.uses_handpan_keys();
 
                         match (key, pressed, handpan_keys) {
                             (egui::Key::ArrowUp, true, false) => {
@@ -227,6 +227,20 @@ impl SquawkApp {
                                 continue;
                             }
                             _ => {}
+                        }
+
+                        // Tambura: number keys set how many strings are audible (1–5).
+                        if *pressed
+                            && matches!(instrument, Instrument::Tambura)
+                            && let Some(count) = tambura_string_count_key(*key)
+                        {
+                            let param = ParameterId::DingStrings;
+                            let clamped = param.clamp(count);
+                            self.control.set_parameter_value(param, clamped);
+                            if let Err(err) = self.settings.update_parameter(param, clamped) {
+                                eprintln!("Warning: Failed to persist tambura string count: {err}");
+                            }
+                            continue;
                         }
 
                         if handpan_keys {
@@ -300,8 +314,13 @@ impl SquawkApp {
         self.keyboard_velocity = next.clamp(1, 127) as u8;
     }
 
-    fn draw_ding_wash(&self, ui: &mut egui::Ui) {
-        ui.label("Wash");
+    fn draw_drone(&self, ui: &mut egui::Ui) {
+        ui.label(
+            "Accompaniment pad under Handpan. Root stays on the ding; Recent / Second follow what you play. Tune Resonator, Waveshape, or Tambura as main instruments — selecting one also sets which voice colours the Root here.",
+        );
+        ui.add_space(8.0);
+
+        ui.label("Root voice (accompaniment)");
         let mut wash = self.control.ding_wash();
         let previous = wash;
         let selected = match wash {
@@ -309,7 +328,7 @@ impl SquawkApp {
             2 => "Tambura",
             _ => "Waveshape",
         };
-        egui::ComboBox::from_id_source("ding_wash")
+        egui::ComboBox::from_id_source("drone_voice")
             .selected_text(selected)
             .show_ui(ui, |combo| {
                 combo.selectable_value(&mut wash, 0, "Resonator");
@@ -319,19 +338,41 @@ impl SquawkApp {
         if wash != previous {
             self.control.set_ding_wash(wash);
             if let Err(err) = self.settings.update_ding_wash(wash) {
-                eprintln!("Warning: Failed to persist Ding wash: {err}");
+                eprintln!("Warning: Failed to persist drone voice: {err}");
             }
         }
-        let params = if wash == 2 {
-            ParameterId::tambura()
-        } else {
-            ParameterId::ding_wash()
-        };
-        for &param in params {
-            self.draw_parameter(ui, param, true);
-            ui.add_space(8.0);
+        ui.add_space(8.0);
+
+        // Root voice synth — depends on which wash is selected.
+        match wash {
+            2 => {
+                ui.label("Tambura (Root)");
+                ui.label(
+                    "Solo one string to audition, then set 6 for the full chord. Keys 1–6 work when Tambura is the main instrument.",
+                );
+                ui.add_space(4.0);
+                for &param in ParameterId::tambura() {
+                    self.draw_parameter(ui, param, true);
+                    ui.add_space(8.0);
+                }
+            }
+            1 => {
+                ui.label("Waveshape (Root)");
+                for &param in ParameterId::ding_wash() {
+                    self.draw_parameter(ui, param, true);
+                    ui.add_space(8.0);
+                }
+            }
+            _ => {
+                ui.label("Resonator (Root)");
+                ui.label("No extra voice knobs — tone comes from the formants below.");
+                ui.add_space(8.0);
+            }
         }
-        ui.label("Formant");
+
+        ui.label("Formant (Root)");
+        ui.label("Q: positive peaks a band; negative scoops it (notch-like).");
+        ui.add_space(4.0);
         for param in [ParameterId::FormantRate, ParameterId::FormantDepth] {
             self.draw_parameter(ui, param, true);
             ui.add_space(8.0);
@@ -340,8 +381,70 @@ impl SquawkApp {
             self.draw_parameter(ui, param, true);
             ui.add_space(8.0);
         }
-        ui.label("Band motion (shared by Ding, Recent, and Second)");
+
+        ui.label("Balance");
+        for param in [
+            ParameterId::MixDing,
+            ParameterId::MixRecent,
+            ParameterId::MixSecond,
+        ] {
+            self.draw_parameter(ui, param, true);
+            ui.add_space(8.0);
+        }
+        ui.label("Band motion (Recent / Second)");
         for &param in ParameterId::band_motion() {
+            self.draw_parameter(ui, param, true);
+            ui.add_space(8.0);
+        }
+    }
+
+    fn draw_drone_voice_synth(&self, ui: &mut egui::Ui, kind: u8) {
+        let name = match kind {
+            2 => "Tambura",
+            1 => "Waveshape",
+            _ => "Resonator",
+        };
+        ui.label(format!(
+            "Play pads to hold a {name} tone and tune it. Shared scale / ding with Handpan. Selecting this instrument also sets the Handpan Root accompaniment voice."
+        ));
+        ui.add_space(8.0);
+        ui.label("Level");
+        self.draw_parameter(ui, ParameterId::MixDing, true);
+        ui.add_space(8.0);
+        // Resonator ignores Shape/Spread/Brightness — only show knobs that affect the voice.
+        let voice_params: &[ParameterId] = match kind {
+            2 => ParameterId::tambura(),
+            1 => ParameterId::ding_wash(),
+            _ => &[],
+        };
+        if kind == 2 {
+            ui.label(
+                "Solo one string to audition, then set 6 for the full chord. Keys 1–6 match the slider. Play a pad (Z/X/…) after changing.",
+            );
+            ui.add_space(4.0);
+            self.draw_parameter(ui, ParameterId::DingStrings, true);
+            ui.add_space(8.0);
+            for &param in voice_params {
+                if param == ParameterId::DingStrings {
+                    continue;
+                }
+                self.draw_parameter(ui, param, true);
+                ui.add_space(8.0);
+            }
+        } else {
+            for &param in voice_params {
+                self.draw_parameter(ui, param, true);
+                ui.add_space(8.0);
+            }
+        }
+        ui.label("Formant");
+        ui.label("Q: positive peaks a band; negative scoops it (notch-like).");
+        ui.add_space(4.0);
+        for param in [ParameterId::FormantRate, ParameterId::FormantDepth] {
+            self.draw_parameter(ui, param, true);
+            ui.add_space(8.0);
+        }
+        for &param in ParameterId::formant() {
             self.draw_parameter(ui, param, true);
             ui.add_space(8.0);
         }
@@ -351,20 +454,26 @@ impl SquawkApp {
         let expected = match Instrument::from_u8(self.control.instrument()) {
             Instrument::Handpan => DeskModule::Handpan,
             Instrument::Bass => DeskModule::FmBass,
+            Instrument::Bells => DeskModule::Bells,
+            Instrument::Resonator => DeskModule::Resonator,
+            Instrument::Waveshape => DeskModule::Waveshape,
+            Instrument::Tambura => DeskModule::Tambura,
             Instrument::Modal => DeskModule::Modal,
         };
         let ok = match expected {
             DeskModule::Handpan => matches!(
                 self.open_module,
                 DeskModule::Handpan
-                    | DeskModule::Ding
-                    | DeskModule::Recent
-                    | DeskModule::Second
+                    | DeskModule::Drone
                     | DeskModule::Bass
                     | DeskModule::Echo
                     | DeskModule::Reverb
             ),
             DeskModule::FmBass => self.open_module == DeskModule::FmBass,
+            DeskModule::Bells => self.open_module == DeskModule::Bells,
+            DeskModule::Resonator => self.open_module == DeskModule::Resonator,
+            DeskModule::Waveshape => self.open_module == DeskModule::Waveshape,
+            DeskModule::Tambura => self.open_module == DeskModule::Tambura,
             DeskModule::Modal => self.open_module == DeskModule::Modal,
             _ => false,
         };
@@ -377,6 +486,10 @@ impl SquawkApp {
         match Instrument::from_u8(self.control.instrument()) {
             Instrument::Handpan => &HANDPAN_STRIPS,
             Instrument::Bass => &BASS_STRIPS,
+            Instrument::Bells => &BELLS_STRIPS,
+            Instrument::Resonator => &RESONATOR_STRIPS,
+            Instrument::Waveshape => &WAVESHAPE_STRIPS,
+            Instrument::Tambura => &TAMBURA_STRIPS,
             Instrument::Modal => &MODAL_STRIPS,
         }
     }
@@ -388,6 +501,10 @@ impl SquawkApp {
             let selected = match Instrument::from_u8(instrument) {
                 Instrument::Handpan => "Handpan",
                 Instrument::Bass => "Bass",
+                Instrument::Bells => "Bells",
+                Instrument::Resonator => "Resonator",
+                Instrument::Waveshape => "Waveshape",
+                Instrument::Tambura => "Tambura",
                 Instrument::Modal => "Modal",
             };
             egui::ComboBox::from_id_source("instrument")
@@ -396,12 +513,28 @@ impl SquawkApp {
                     combo.selectable_value(&mut instrument, Instrument::Modal.as_u8(), "Modal");
                     combo.selectable_value(&mut instrument, Instrument::Handpan.as_u8(), "Handpan");
                     combo.selectable_value(&mut instrument, Instrument::Bass.as_u8(), "Bass");
+                    combo.selectable_value(&mut instrument, Instrument::Bells.as_u8(), "Bells");
+                    combo.selectable_value(
+                        &mut instrument,
+                        Instrument::Resonator.as_u8(),
+                        "Resonator",
+                    );
+                    combo.selectable_value(
+                        &mut instrument,
+                        Instrument::Waveshape.as_u8(),
+                        "Waveshape",
+                    );
+                    combo.selectable_value(&mut instrument, Instrument::Tambura.as_u8(), "Tambura");
                 });
             if instrument != self.control.instrument() {
                 self.control.set_instrument_u8(instrument);
                 self.open_module = match Instrument::from_u8(instrument) {
                     Instrument::Handpan => DeskModule::Handpan,
                     Instrument::Bass => DeskModule::FmBass,
+                    Instrument::Bells => DeskModule::Bells,
+                    Instrument::Resonator => DeskModule::Resonator,
+                    Instrument::Waveshape => DeskModule::Waveshape,
+                    Instrument::Tambura => DeskModule::Tambura,
                     Instrument::Modal => DeskModule::Modal,
                 };
                 if let Err(err) = self.settings.update_instrument(instrument) {
@@ -495,21 +628,17 @@ impl SquawkApp {
                 }
             }
 
-            if let Some(part) = module.part() {
+            if let Some(mask) = module.part_mask() {
                 let muted = self.control.support_muted();
                 let solo = self.control.support_solo();
-                if row
-                    .selectable_label((muted & (1 << part)) != 0, "Mute")
-                    .clicked()
-                {
-                    self.persist_parts(set_part_bit(muted, part, (muted & (1 << part)) == 0), solo);
+                let is_muted = (muted & mask) == mask;
+                let is_solo = (solo & mask) == mask;
+                if row.selectable_label(is_muted, "Mute").clicked() {
+                    self.persist_parts(set_part_mask(muted, mask, !is_muted), solo);
                 }
-                if row
-                    .selectable_label((solo & (1 << part)) != 0, "Solo")
-                    .clicked()
-                {
+                if row.selectable_label(is_solo, "Solo").clicked() {
                     let muted = self.control.support_muted();
-                    self.persist_parts(muted, set_part_bit(solo, part, (solo & (1 << part)) == 0));
+                    self.persist_parts(muted, set_part_mask(solo, mask, !is_solo));
                 }
             }
 
@@ -849,7 +978,7 @@ impl SquawkApp {
     fn draw_analysis_panel(&self, ui: &mut egui::Ui) {
         ui.heading("Analysis");
         ui.label(
-            "Listens to your strikes and modulates Ding, Recent, Second, and Bass. Pulse sets how strongly presence follows the beat; Fade is how long a degree stays remembered.",
+            "Listens to your strikes and modulates the Drone (Root / Recent / Second) and Bass. Pulse sets how strongly presence follows the beat; Fade is how long a degree stays remembered.",
         );
         ui.add_space(6.0);
         for &param in ParameterId::analysis() {
@@ -902,7 +1031,7 @@ impl SquawkApp {
         let view = self.control.groove_view();
         ui.heading("Groove");
         ui.label(
-            "Starts unlocked and learns from your strikes. Auto-lock freezes BPM once confidence is high; Unlock to learn again. Soft click fades with confidence.",
+            "Tap four times in tempo: the fourth tap locks the period and starts the click (if level is up). Unlock to tap a new tempo. Soft click runs on that grid.",
         );
         ui.add_space(8.0);
 
@@ -1018,28 +1147,36 @@ impl SquawkApp {
                     ui.add_space(8.0);
                 }
             }
-            DeskModule::Ding => self.draw_ding_wash(ui),
-            DeskModule::Recent => {
-                ui.label(
-                    "Follows the degree you have been playing most. Band motion lives on Ding; Pulse and Fade live on Analysis.",
-                );
-            }
-            DeskModule::Second => {
-                ui.label(
-                    "Follows the next most played degree. Band motion lives on Ding; Pulse and Fade live on Analysis.",
-                );
-            }
+            DeskModule::Drone => self.draw_drone(ui),
+            DeskModule::Resonator => self.draw_drone_voice_synth(ui, 0),
+            DeskModule::Waveshape => self.draw_drone_voice_synth(ui, 1),
+            DeskModule::Tambura => self.draw_drone_voice_synth(ui, 2),
             DeskModule::Bass => {
-                ui.label("Follows the degree the beat agrees on. Pulse and Fade live on Analysis.");
+                ui.label(
+                    "After four taps lock the groove, plays the root on every beat — strong on 1, softer on 2/3/4. Amount 0 turns it off.",
+                );
+                ui.add_space(6.0);
+                for param in [
+                    ParameterId::BassLineAmount,
+                    ParameterId::BassLineVariation,
+                    ParameterId::FmBassLevel,
+                ] {
+                    self.draw_parameter(ui, param, true);
+                    ui.add_space(8.0);
+                }
+                ui.add_space(10.0);
+                ui.heading("Synth");
+                self.draw_fm_bass(ui);
             }
             DeskModule::FmBass => self.draw_fm_bass(ui),
+            DeskModule::Bells => self.draw_bells_synth(ui),
             DeskModule::Echo => {
                 ui.label(
-                    "Decorations recall recent phrases after a beat lag once tempo is locked. Density thins the shadow — no feedback wash. Bells sit about an octave above the pad.",
+                    "Echo role: recalls recent phrases after a beat lag once tempo is locked. Density thins the shadow. Pick which voice plays the delayed hits.",
                 );
                 ui.add_space(6.0);
                 ui.horizontal(|row| {
-                    row.label("Instrument");
+                    row.label("Voice");
                     let mut instrument = self.control.echo_instrument();
                     let selected = match EchoInstrument::from_u8(instrument) {
                         EchoInstrument::Handpan => "Handpan",
@@ -1062,20 +1199,33 @@ impl SquawkApp {
                     if instrument != self.control.echo_instrument() {
                         self.control.set_echo_instrument_u8(instrument);
                         if let Err(err) = self.settings.update_echo_instrument(instrument) {
-                            eprintln!("Warning: Failed to persist decorations instrument: {err}");
+                            eprintln!("Warning: Failed to persist echo voice: {err}");
                         }
                     }
                 });
                 ui.add_space(8.0);
-                if EchoInstrument::from_u8(self.control.echo_instrument())
-                    == EchoInstrument::Handpan
-                {
-                    ui.label("Handpan decorations share the Handpan fader, pan, and send.");
-                    ui.add_space(6.0);
-                }
                 self.draw_parameter(ui, ParameterId::DecoLagBeats, true);
                 ui.add_space(8.0);
                 self.draw_parameter(ui, ParameterId::DecoDensity, true);
+                ui.add_space(10.0);
+                match EchoInstrument::from_u8(self.control.echo_instrument()) {
+                    EchoInstrument::Bells => {
+                        ui.heading("Voice synth");
+                        ui.label(
+                            "Bells play about an octave above the pad for the delayed phrase.",
+                        );
+                        ui.add_space(6.0);
+                        for &param in ParameterId::bells() {
+                            self.draw_parameter(ui, param, true);
+                            ui.add_space(8.0);
+                        }
+                    }
+                    EchoInstrument::Handpan => {
+                        ui.label(
+                            "Handpan voice shares the Handpan strip fader, pan, send, and synth.",
+                        );
+                    }
+                }
             }
             DeskModule::Reverb => {
                 for &param in ParameterId::reverb() {
@@ -1092,6 +1242,21 @@ impl SquawkApp {
         if let Err(err) = self.settings.update_fm_bass_params(params) {
             eprintln!("Warning: Failed to persist FM bass params: {err}");
         }
+    }
+
+    fn draw_bells_knobs(&self, ui: &mut egui::Ui) {
+        for &param in ParameterId::bells() {
+            self.draw_parameter(ui, param, true);
+            ui.add_space(8.0);
+        }
+    }
+
+    fn draw_bells_synth(&self, ui: &mut egui::Ui) {
+        ui.label(
+            "Polyphonic FM bells. Same pad layout as Handpan; played at pad pitch (echo role still octave-shifts).",
+        );
+        ui.add_space(8.0);
+        self.draw_bells_knobs(ui);
     }
 
     fn draw_fm_bass(&mut self, ui: &mut egui::Ui) {
@@ -1687,21 +1852,24 @@ impl eframe::App for SquawkApp {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DeskModule {
     Handpan,
-    Ding,
-    Recent,
-    Second,
+    Drone,
     Bass,
     Echo,
     Reverb,
     Modal,
     FmBass,
+    Bells,
+    Resonator,
+    Waveshape,
+    Tambura,
 }
 
-const HANDPAN_STRIPS: [DeskModule; 7] = [
+/// Support parts 0–2 (Root / Recent / Second) mute and solo together.
+const DRONE_PART_MASK: u8 = 0b0111;
+
+const HANDPAN_STRIPS: [DeskModule; 5] = [
     DeskModule::Handpan,
-    DeskModule::Ding,
-    DeskModule::Recent,
-    DeskModule::Second,
+    DeskModule::Drone,
     DeskModule::Bass,
     DeskModule::Echo,
     DeskModule::Reverb,
@@ -1709,17 +1877,27 @@ const HANDPAN_STRIPS: [DeskModule; 7] = [
 
 const BASS_STRIPS: [DeskModule; 1] = [DeskModule::FmBass];
 
+const BELLS_STRIPS: [DeskModule; 1] = [DeskModule::Bells];
+
+const RESONATOR_STRIPS: [DeskModule; 1] = [DeskModule::Resonator];
+
+const WAVESHAPE_STRIPS: [DeskModule; 1] = [DeskModule::Waveshape];
+
+const TAMBURA_STRIPS: [DeskModule; 1] = [DeskModule::Tambura];
+
 const MODAL_STRIPS: [DeskModule; 1] = [DeskModule::Modal];
 
 impl DeskModule {
     fn name(self) -> &'static str {
         match self {
             DeskModule::Handpan => "Handpan",
-            DeskModule::Ding => "Ding",
-            DeskModule::Recent => "Recent",
-            DeskModule::Second => "Second",
+            DeskModule::Drone => "Drone",
             DeskModule::Bass | DeskModule::FmBass => "Bass",
-            DeskModule::Echo => "Decorations",
+            DeskModule::Echo => "Echo",
+            DeskModule::Bells => "Bells",
+            DeskModule::Resonator => "Resonator",
+            DeskModule::Waveshape => "Waveshape",
+            DeskModule::Tambura => "Tambura",
             DeskModule::Reverb => "Reverb",
             DeskModule::Modal => "Modal",
         }
@@ -1728,11 +1906,13 @@ impl DeskModule {
     fn fader(self) -> Option<ParameterId> {
         match self {
             DeskModule::Handpan => Some(ParameterId::MixHandpan),
-            DeskModule::Ding => Some(ParameterId::MixDing),
-            DeskModule::Recent => Some(ParameterId::MixRecent),
-            DeskModule::Second => Some(ParameterId::MixSecond),
+            // Balances live in the Drone inspector (Root / Recent / Second).
+            DeskModule::Drone => None,
             DeskModule::Bass => Some(ParameterId::MixBass),
-            DeskModule::Echo => Some(ParameterId::MixTaps),
+            DeskModule::Echo | DeskModule::Bells => Some(ParameterId::MixTaps),
+            DeskModule::Resonator | DeskModule::Waveshape | DeskModule::Tambura => {
+                Some(ParameterId::MixDing)
+            }
             DeskModule::Modal => Some(ParameterId::OutputGain),
             DeskModule::FmBass => Some(ParameterId::FmBassLevel),
             DeskModule::Reverb => None,
@@ -1742,44 +1922,55 @@ impl DeskModule {
     fn pan(self) -> Option<ParameterId> {
         match self {
             DeskModule::Handpan => Some(ParameterId::PanHandpan),
-            DeskModule::Ding => Some(ParameterId::PanDing),
-            DeskModule::Recent => Some(ParameterId::PanRecent),
-            DeskModule::Second => Some(ParameterId::PanSecond),
+            DeskModule::Drone => Some(ParameterId::PanDing),
             DeskModule::Bass => Some(ParameterId::PanBass),
             DeskModule::Echo => Some(ParameterId::PanEcho),
-            DeskModule::Reverb | DeskModule::Modal | DeskModule::FmBass => None,
+            DeskModule::Reverb
+            | DeskModule::Modal
+            | DeskModule::FmBass
+            | DeskModule::Bells
+            | DeskModule::Resonator
+            | DeskModule::Waveshape
+            | DeskModule::Tambura => None,
         }
     }
 
     fn send(self) -> Option<ParameterId> {
         match self {
             DeskModule::Handpan => Some(ParameterId::ReverbHandpan),
-            DeskModule::Ding => Some(ParameterId::ReverbDing),
-            DeskModule::Recent => Some(ParameterId::ReverbRecent),
-            DeskModule::Second => Some(ParameterId::ReverbSecond),
+            DeskModule::Drone => Some(ParameterId::ReverbDing),
             DeskModule::Bass => Some(ParameterId::ReverbBass),
             DeskModule::Echo => Some(ParameterId::ReverbEcho),
-            DeskModule::Reverb | DeskModule::Modal | DeskModule::FmBass => None,
+            DeskModule::Reverb
+            | DeskModule::Modal
+            | DeskModule::FmBass
+            | DeskModule::Bells
+            | DeskModule::Resonator
+            | DeskModule::Waveshape
+            | DeskModule::Tambura => None,
         }
     }
 
-    fn part(self) -> Option<usize> {
+    /// Support mute/solo bits for this strip. Drone gates Root+Recent+Second together.
+    fn part_mask(self) -> Option<u8> {
         match self {
-            DeskModule::Ding => Some(0),
-            DeskModule::Recent => Some(1),
-            DeskModule::Second => Some(2),
-            DeskModule::Bass => Some(3),
-            DeskModule::Echo => Some(4),
-            DeskModule::Handpan | DeskModule::Reverb | DeskModule::Modal | DeskModule::FmBass => {
-                None
-            }
+            DeskModule::Drone => Some(DRONE_PART_MASK),
+            DeskModule::Bass => Some(1 << 3),
+            DeskModule::Echo => Some(1 << 4),
+            DeskModule::Handpan
+            | DeskModule::Reverb
+            | DeskModule::Modal
+            | DeskModule::FmBass
+            | DeskModule::Bells
+            | DeskModule::Resonator
+            | DeskModule::Waveshape
+            | DeskModule::Tambura => None,
         }
     }
 }
 
-fn set_part_bit(mask: u8, index: usize, on: bool) -> u8 {
-    let bit = 1u8 << index;
-    if on { mask | bit } else { mask & !bit }
+fn set_part_mask(mask: u8, bits: u8, on: bool) -> u8 {
+    if on { mask | bits } else { mask & !bits }
 }
 
 fn cents_error(measured_hz: f32, target_hz: f32) -> f32 {
@@ -1829,6 +2020,18 @@ const HANDPAN_SOFTEST_KEYS: [egui::Key; 10] = [
     egui::Key::OpenBracket,
     egui::Key::CloseBracket,
 ];
+
+fn tambura_string_count_key(key: egui::Key) -> Option<f32> {
+    match key {
+        egui::Key::Num1 => Some(1.0),
+        egui::Key::Num2 => Some(2.0),
+        egui::Key::Num3 => Some(3.0),
+        egui::Key::Num4 => Some(4.0),
+        egui::Key::Num5 => Some(5.0),
+        egui::Key::Num6 => Some(6.0),
+        _ => None,
+    }
+}
 
 /// `(midi note, strength)` where strength is 1, 0.55, or 0.30 of the velocity setting.
 fn handpan_key(key: egui::Key, notes: &[u8]) -> Option<(u8, f32)> {

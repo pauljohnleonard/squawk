@@ -1,7 +1,7 @@
 //! Sweet 2-operator FM bells for delayed hits and other strike roles.
 //!
-//! Fixed glassy preset: inharmonic ratio, decaying modulation index, short
-//! amplitude envelope. Cheap polyphony, realtime-safe.
+//! Tunable glassy FM: inharmonic-friendly ratio, decaying modulation index,
+//! short amplitude envelope. Cheap polyphony, realtime-safe.
 
 use crate::voice::StrikeVoice;
 use core::f32::consts::TAU;
@@ -11,14 +11,31 @@ pub const BELLS_VOICES: usize = 8;
 /// Default transposition applied by the Echo role (one octave up).
 pub const DEFAULT_BELLS_OCTAVE: i8 = 12;
 
-const RATIO: f32 = 3.5;
-const INDEX_PEAK: f32 = 4.5;
-const INDEX_FLOOR: f32 = 0.15;
+pub const DEFAULT_BELLS_DECAY: f32 = 0.45;
+pub const BELLS_DECAY_RANGE: (f32, f32) = (0.15, 1.0);
+pub const DEFAULT_BELLS_RATIO: f32 = 3.5;
+pub const BELLS_RATIO_RANGE: (f32, f32) = (1.0, 5.0);
+pub const DEFAULT_BELLS_INDEX: f32 = 4.5;
+pub const BELLS_INDEX_RANGE: (f32, f32) = (0.0, 8.0);
+pub const DEFAULT_BELLS_INDEX_DECAY: f32 = 0.4;
+pub const BELLS_INDEX_DECAY_RANGE: (f32, f32) = (0.0, 1.0);
+
 const AMP_GAIN: f32 = 0.35;
 const AMP_ATTACK_S: f32 = 0.004;
-const AMP_DECAY_S: f32 = 1.6;
-const INDEX_DECAY_S: f32 = 0.55;
+const DECAY_MIN_S: f32 = 0.5;
+const DECAY_MAX_S: f32 = 3.0;
+const INDEX_FLOOR: f32 = 0.15;
+const INDEX_DECAY_MIN_S: f32 = 0.15;
+const INDEX_DECAY_MAX_S: f32 = 1.2;
 const QUIET: f32 = 1.0e-4;
+
+#[derive(Clone, Copy)]
+struct Shape {
+    decay: f32,
+    ratio: f32,
+    index: f32,
+    index_decay: f32,
+}
 
 #[derive(Clone, Copy)]
 struct Voice {
@@ -56,25 +73,34 @@ impl Voice {
         }
     }
 
-    fn trigger(&mut self, hz: f32, amplitude: f32, place: f32, sample_rate: f32) {
+    fn trigger(&mut self, hz: f32, amplitude: f32, place: f32, sample_rate: f32, shape: Shape) {
         let hz = hz.clamp(20.0, sample_rate * 0.45);
         let amplitude = amplitude.clamp(0.0, 1.0);
         let place = place.clamp(0.0, 1.0);
+        let decay = shape.decay.clamp(BELLS_DECAY_RANGE.0, BELLS_DECAY_RANGE.1);
+        let ratio = shape.ratio.clamp(BELLS_RATIO_RANGE.0, BELLS_RATIO_RANGE.1);
+        let index = shape.index.clamp(BELLS_INDEX_RANGE.0, BELLS_INDEX_RANGE.1);
+        let index_decay_amt = shape
+            .index_decay
+            .clamp(BELLS_INDEX_DECAY_RANGE.0, BELLS_INDEX_DECAY_RANGE.1);
         let brightness = 0.65 + 0.35 * place;
         let dt = 1.0 / sample_rate.max(1.0);
+        let amp_decay_s = DECAY_MIN_S + (DECAY_MAX_S - DECAY_MIN_S) * decay;
+        let index_decay_s =
+            INDEX_DECAY_MIN_S + (INDEX_DECAY_MAX_S - INDEX_DECAY_MIN_S) * index_decay_amt;
 
         self.active = true;
         self.carrier_phase = 0.0;
         self.mod_phase = 0.0;
         self.carrier_inc = TAU * hz * dt;
-        self.mod_inc = TAU * hz * RATIO * dt;
+        self.mod_inc = TAU * hz * ratio * dt;
         self.amp = 0.0;
         self.amp_level = amplitude * AMP_GAIN;
         self.amp_attack = 1.0 - (-dt / AMP_ATTACK_S).exp();
-        self.amp_decay = (-dt / AMP_DECAY_S).exp();
-        self.index_peak = INDEX_PEAK * brightness * (0.55 + 0.45 * amplitude);
+        self.amp_decay = (-dt / amp_decay_s).exp();
+        self.index_peak = index * brightness * (0.55 + 0.45 * amplitude);
         self.index = self.index_peak;
-        self.index_decay = (-dt / INDEX_DECAY_S).exp();
+        self.index_decay = (-dt / index_decay_s).exp();
         self.age = 0;
     }
 
@@ -110,6 +136,10 @@ pub struct Bells {
     sample_rate: f32,
     voices: [Voice; BELLS_VOICES],
     next: usize,
+    decay: f32,
+    ratio: f32,
+    index: f32,
+    index_decay: f32,
 }
 
 impl Bells {
@@ -118,6 +148,35 @@ impl Bells {
             sample_rate: sample_rate.max(1.0),
             voices: [Voice::silent(); BELLS_VOICES],
             next: 0,
+            decay: DEFAULT_BELLS_DECAY,
+            ratio: DEFAULT_BELLS_RATIO,
+            index: DEFAULT_BELLS_INDEX,
+            index_decay: DEFAULT_BELLS_INDEX_DECAY,
+        }
+    }
+
+    pub fn set_decay(&mut self, value: f32) {
+        self.decay = value.clamp(BELLS_DECAY_RANGE.0, BELLS_DECAY_RANGE.1);
+    }
+
+    pub fn set_ratio(&mut self, value: f32) {
+        self.ratio = value.clamp(BELLS_RATIO_RANGE.0, BELLS_RATIO_RANGE.1);
+    }
+
+    pub fn set_index(&mut self, value: f32) {
+        self.index = value.clamp(BELLS_INDEX_RANGE.0, BELLS_INDEX_RANGE.1);
+    }
+
+    pub fn set_index_decay(&mut self, value: f32) {
+        self.index_decay = value.clamp(BELLS_INDEX_DECAY_RANGE.0, BELLS_INDEX_DECAY_RANGE.1);
+    }
+
+    fn shape(&self) -> Shape {
+        Shape {
+            decay: self.decay,
+            ratio: self.ratio,
+            index: self.index,
+            index_decay: self.index_decay,
         }
     }
 
@@ -151,7 +210,8 @@ impl StrikeVoice for Bells {
         }
         let hz = midi_hz(note);
         let index = self.steal();
-        self.voices[index].trigger(hz, amplitude, place, self.sample_rate);
+        let shape = self.shape();
+        self.voices[index].trigger(hz, amplitude, place, self.sample_rate, shape);
     }
 
     fn next_sample(&mut self) -> f32 {
@@ -234,5 +294,17 @@ mod tests {
         let low = midi_hz(60);
         let high = midi_hz(60u8.saturating_add(DEFAULT_BELLS_OCTAVE as u8));
         assert!((high / low - 2.0).abs() < 1.0e-5);
+    }
+
+    #[test]
+    fn knobs_clamp() {
+        let mut bells = Bells::new(RATE);
+        bells.set_ratio(99.0);
+        bells.set_index(-1.0);
+        bells.set_decay(0.0);
+        bells.set_index_decay(2.0);
+        bells.strike_at(72, 0.8, 0.5);
+        let sample = bells.next_sample();
+        assert!(sample.is_finite());
     }
 }

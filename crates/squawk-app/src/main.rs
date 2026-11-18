@@ -12,7 +12,14 @@ use midir::{Ignore, MidiInput};
 use parking_lot::Mutex;
 
 use squawk_engine::{
-    Bells, DECO_DENSITY_RANGE, DECO_LAG_BEATS_RANGE, DEFAULT_BELLS_OCTAVE,
+    BASS_LINE_AMOUNT_RANGE, BASS_LINE_VARIATION_RANGE, BELLS_DECAY_RANGE, BELLS_INDEX_DECAY_RANGE,
+    BELLS_INDEX_RANGE, BELLS_RATIO_RANGE, BassLine, Bells, DECO_DENSITY_RANGE,
+    DECO_LAG_BEATS_RANGE, DEFAULT_BASS_LINE_AMOUNT as ENGINE_DEFAULT_BASS_LINE_AMOUNT,
+    DEFAULT_BASS_LINE_VARIATION as ENGINE_DEFAULT_BASS_LINE_VARIATION,
+    DEFAULT_BELLS_DECAY as ENGINE_DEFAULT_BELLS_DECAY,
+    DEFAULT_BELLS_INDEX as ENGINE_DEFAULT_BELLS_INDEX,
+    DEFAULT_BELLS_INDEX_DECAY as ENGINE_DEFAULT_BELLS_INDEX_DECAY, DEFAULT_BELLS_OCTAVE,
+    DEFAULT_BELLS_RATIO as ENGINE_DEFAULT_BELLS_RATIO,
     DEFAULT_BREATH_AUTO_LEVEL as ENGINE_DEFAULT_BREATH_AUTO_LEVEL,
     DEFAULT_BREATH_FEEDBACK as ENGINE_DEFAULT_BREATH_FEEDBACK,
     DEFAULT_BREATH_NOISE_CUTOFF_HZ as ENGINE_DEFAULT_BREATH_NOISE_CUTOFF_HZ,
@@ -72,21 +79,23 @@ use squawk_engine::{
     DEFAULT_SUPPORT_PULSE as ENGINE_DEFAULT_SUPPORT_PULSE,
     DEFAULT_SUPPORT_WANDER as ENGINE_DEFAULT_SUPPORT_WANDER,
     DEFAULT_SUPPORT_WIDTH as ENGINE_DEFAULT_SUPPORT_WIDTH,
+    DEFAULT_TAMBURA_JAWARI as ENGINE_DEFAULT_TAMBURA_JAWARI,
     DEFAULT_VELOCITY_COUPLING as ENGINE_DEFAULT_VELOCITY_COUPLING, DING_BRIGHTNESS_RANGE,
     DING_FORMANT_RANGE, DING_RESONANCE_RANGE, DING_SHAPE_RANGE, DING_SPREAD_RANGE,
-    DING_STRINGS_RANGE, Decorations, Engine, EngineParams, ExciterMode, FM_BASS_DECAY_RANGE,
-    FM_BASS_FEEDBACK_RANGE, FM_BASS_INDEX_DECAY_RANGE, FM_BASS_INDEX_RANGE, FM_BASS_RATIO_RANGE,
-    FORMANT_DEPTH_RANGE, FORMANT_RATE_RANGE, FmBass, FmBassParams, GROOVE_CLICK_LEVEL_RANGE,
-    GROOVE_PHASE_PULL_RANGE, GROOVE_SENSITIVITY_RANGE, GrooveStatus, GrooveTracker,
-    HANDPAN_COUPLING_RANGE, HANDPAN_DECAY_RANGE, HANDPAN_DETUNE_CENTS_RANGE,
-    HANDPAN_DING_MAX as ENGINE_HANDPAN_DING_MAX, HANDPAN_DING_MIN as ENGINE_HANDPAN_DING_MIN,
-    HANDPAN_GLIDE_RANGE, HANDPAN_HIT_RANGE, HANDPAN_PARTIAL_RANGE,
-    HANDPAN_SCALE_COUNT as ENGINE_HANDPAN_SCALE_COUNT, Handpan, MIX_LEVEL_RANGE, PAN_RANGE,
-    PlayMemory, REVERB_BASS_RANGE, REVERB_DECAY_RANGE, REVERB_DING_RANGE, REVERB_ECHO_RANGE,
-    REVERB_HANDPAN_RANGE, REVERB_RECENT_RANGE, REVERB_SECOND_RANGE, REVERB_SUPPORT_RANGE,
-    REVERB_TONE_RANGE, Reverb, SUPPORT_DRIFT_RANGE, SUPPORT_FADE_RANGE, SUPPORT_LEVEL_RANGE,
-    SUPPORT_MOTION_RANGE, SUPPORT_PULSE_RANGE, SUPPORT_WANDER_RANGE, SUPPORT_WIDTH_RANGE,
-    StrikeVoice, Support, stereo_pan,
+    DING_STRINGS_RANGE, DRONE_LEVEL_RANGE, Decorations, DroneVoice, DroneVoiceKind, Engine,
+    EngineParams, ExciterMode, FM_BASS_DECAY_RANGE, FM_BASS_FEEDBACK_RANGE,
+    FM_BASS_INDEX_DECAY_RANGE, FM_BASS_INDEX_RANGE, FM_BASS_RATIO_RANGE, FORMANT_DEPTH_RANGE,
+    FORMANT_RATE_RANGE, FmBass, FmBassParams, GROOVE_CLICK_LEVEL_RANGE, GROOVE_PHASE_PULL_RANGE,
+    GROOVE_SENSITIVITY_RANGE, GrooveStatus, GrooveTracker, HANDPAN_COUPLING_RANGE,
+    HANDPAN_DECAY_RANGE, HANDPAN_DETUNE_CENTS_RANGE, HANDPAN_DING_MAX as ENGINE_HANDPAN_DING_MAX,
+    HANDPAN_DING_MIN as ENGINE_HANDPAN_DING_MIN, HANDPAN_GLIDE_RANGE, HANDPAN_HIT_RANGE,
+    HANDPAN_PARTIAL_RANGE, HANDPAN_SCALE_COUNT as ENGINE_HANDPAN_SCALE_COUNT, Handpan,
+    MIX_LEVEL_RANGE, PAN_RANGE, PlayMemory, REVERB_BASS_RANGE, REVERB_DECAY_RANGE,
+    REVERB_DING_RANGE, REVERB_ECHO_RANGE, REVERB_HANDPAN_RANGE, REVERB_RECENT_RANGE,
+    REVERB_SECOND_RANGE, REVERB_SUPPORT_RANGE, REVERB_TONE_RANGE, Reverb, SUPPORT_DRIFT_RANGE,
+    SUPPORT_FADE_RANGE, SUPPORT_LEVEL_RANGE, SUPPORT_MOTION_RANGE, SUPPORT_PULSE_RANGE,
+    SUPPORT_WANDER_RANGE, SUPPORT_WIDTH_RANGE, StrikeVoice, Support, TAMBURA_JAWARI_RANGE,
+    TamburaBank, handpan_interval_hz, stereo_pan,
 };
 
 use settings::SettingsStore;
@@ -153,6 +162,7 @@ pub(crate) const DEFAULT_DING_SHAPE: f32 = ENGINE_DEFAULT_DING_SHAPE;
 pub(crate) const DEFAULT_DING_SPREAD: f32 = ENGINE_DEFAULT_DING_SPREAD;
 pub(crate) const DEFAULT_DING_BRIGHTNESS: f32 = ENGINE_DEFAULT_DING_BRIGHTNESS;
 pub(crate) const DEFAULT_DING_STRINGS: f32 = ENGINE_DEFAULT_DING_STRINGS;
+pub(crate) const DEFAULT_TAMBURA_JAWARI: f32 = ENGINE_DEFAULT_TAMBURA_JAWARI;
 pub(crate) const DEFAULT_DING_FORMANT_1: f32 = ENGINE_DEFAULT_DING_FORMANT_1;
 pub(crate) const DEFAULT_DING_FORMANT_2: f32 = ENGINE_DEFAULT_DING_FORMANT_2;
 pub(crate) const DEFAULT_DING_FORMANT_3: f32 = ENGINE_DEFAULT_DING_FORMANT_3;
@@ -167,6 +177,12 @@ pub(crate) const DEFAULT_FM_BASS_INDEX_DECAY: f32 = ENGINE_DEFAULT_FM_BASS_INDEX
 pub(crate) const DEFAULT_FM_BASS_FEEDBACK: f32 = ENGINE_DEFAULT_FM_BASS_FEEDBACK;
 pub(crate) const DEFAULT_FM_BASS_LEVEL: f32 = 1.0;
 pub(crate) const FM_BASS_LEVEL_RANGE: (f32, f32) = (0.0, 2.0);
+pub(crate) const DEFAULT_BASS_LINE_AMOUNT: f32 = ENGINE_DEFAULT_BASS_LINE_AMOUNT;
+pub(crate) const DEFAULT_BASS_LINE_VARIATION: f32 = ENGINE_DEFAULT_BASS_LINE_VARIATION;
+pub(crate) const DEFAULT_BELLS_DECAY: f32 = ENGINE_DEFAULT_BELLS_DECAY;
+pub(crate) const DEFAULT_BELLS_RATIO: f32 = ENGINE_DEFAULT_BELLS_RATIO;
+pub(crate) const DEFAULT_BELLS_INDEX: f32 = ENGINE_DEFAULT_BELLS_INDEX;
+pub(crate) const DEFAULT_BELLS_INDEX_DECAY: f32 = ENGINE_DEFAULT_BELLS_INDEX_DECAY;
 pub(crate) const DEFAULT_PAN: f32 = ENGINE_DEFAULT_PAN;
 pub(crate) const DEFAULT_FORMANT_RATE: f32 = ENGINE_DEFAULT_FORMANT_RATE;
 pub(crate) const DEFAULT_FORMANT_DEPTH: f32 = ENGINE_DEFAULT_FORMANT_DEPTH;
@@ -185,6 +201,10 @@ pub(crate) enum Instrument {
     Modal = 0,
     Handpan = 1,
     Bass = 2,
+    Bells = 3,
+    Resonator = 4,
+    Waveshape = 5,
+    Tambura = 6,
 }
 
 impl Instrument {
@@ -196,13 +216,35 @@ impl Instrument {
         match value {
             1 => Instrument::Handpan,
             2 => Instrument::Bass,
+            3 => Instrument::Bells,
+            4 => Instrument::Resonator,
+            5 => Instrument::Waveshape,
+            6 => Instrument::Tambura,
             _ => Instrument::Modal,
         }
     }
 
     /// Handpan-style pad keyboard / note layout.
     pub(crate) fn uses_handpan_keys(self) -> bool {
-        matches!(self, Instrument::Handpan | Instrument::Bass)
+        matches!(
+            self,
+            Instrument::Handpan
+                | Instrument::Bass
+                | Instrument::Bells
+                | Instrument::Resonator
+                | Instrument::Waveshape
+                | Instrument::Tambura
+        )
+    }
+
+    /// Maps Resonator / Waveshape / Tambura to Support's ding_wash index.
+    pub(crate) fn drone_wash(self) -> Option<u8> {
+        match self {
+            Instrument::Resonator => Some(0),
+            Instrument::Waveshape => Some(1),
+            Instrument::Tambura => Some(2),
+            _ => None,
+        }
     }
 }
 
@@ -294,6 +336,7 @@ struct ControlBlock {
     ding_spread_bits: AtomicU32,
     ding_brightness_bits: AtomicU32,
     ding_strings_bits: AtomicU32,
+    tambura_jawari_bits: AtomicU32,
     ding_formant_1_bits: AtomicU32,
     ding_formant_2_bits: AtomicU32,
     ding_formant_3_bits: AtomicU32,
@@ -326,6 +369,12 @@ struct ControlBlock {
     fm_bass_index_decay_bits: AtomicU32,
     fm_bass_feedback_bits: AtomicU32,
     fm_bass_level_bits: AtomicU32,
+    bass_line_amount_bits: AtomicU32,
+    bass_line_variation_bits: AtomicU32,
+    bells_decay_bits: AtomicU32,
+    bells_ratio_bits: AtomicU32,
+    bells_index_bits: AtomicU32,
+    bells_index_decay_bits: AtomicU32,
     groove_click_enabled: AtomicBool,
     groove_auto_lock: AtomicBool,
     groove_lock_cmd: AtomicU8,
@@ -405,6 +454,7 @@ impl ControlBlock {
             ding_spread_bits: AtomicU32::new(DEFAULT_DING_SPREAD.to_bits()),
             ding_brightness_bits: AtomicU32::new(DEFAULT_DING_BRIGHTNESS.to_bits()),
             ding_strings_bits: AtomicU32::new(DEFAULT_DING_STRINGS.to_bits()),
+            tambura_jawari_bits: AtomicU32::new(DEFAULT_TAMBURA_JAWARI.to_bits()),
             ding_formant_1_bits: AtomicU32::new(DEFAULT_DING_FORMANT_1.to_bits()),
             ding_formant_2_bits: AtomicU32::new(DEFAULT_DING_FORMANT_2.to_bits()),
             ding_formant_3_bits: AtomicU32::new(DEFAULT_DING_FORMANT_3.to_bits()),
@@ -437,6 +487,12 @@ impl ControlBlock {
             fm_bass_index_decay_bits: AtomicU32::new(DEFAULT_FM_BASS_INDEX_DECAY.to_bits()),
             fm_bass_feedback_bits: AtomicU32::new(DEFAULT_FM_BASS_FEEDBACK.to_bits()),
             fm_bass_level_bits: AtomicU32::new(DEFAULT_FM_BASS_LEVEL.to_bits()),
+            bass_line_amount_bits: AtomicU32::new(DEFAULT_BASS_LINE_AMOUNT.to_bits()),
+            bass_line_variation_bits: AtomicU32::new(DEFAULT_BASS_LINE_VARIATION.to_bits()),
+            bells_decay_bits: AtomicU32::new(DEFAULT_BELLS_DECAY.to_bits()),
+            bells_ratio_bits: AtomicU32::new(DEFAULT_BELLS_RATIO.to_bits()),
+            bells_index_bits: AtomicU32::new(DEFAULT_BELLS_INDEX.to_bits()),
+            bells_index_decay_bits: AtomicU32::new(DEFAULT_BELLS_INDEX_DECAY.to_bits()),
             groove_click_enabled: AtomicBool::new(DEFAULT_GROOVE_CLICK_ENABLED),
             groove_auto_lock: AtomicBool::new(DEFAULT_GROOVE_AUTO_LOCK),
             groove_lock_cmd: AtomicU8::new(GROOVE_LOCK_CMD_NONE),
@@ -519,8 +575,6 @@ impl ControlBlock {
             support_fade: f32::from_bits(self.support_fade_bits.load(Ordering::Relaxed)),
             reverb_handpan: f32::from_bits(self.reverb_handpan_bits.load(Ordering::Relaxed)),
             reverb_ding: f32::from_bits(self.reverb_ding_bits.load(Ordering::Relaxed)),
-            reverb_recent: f32::from_bits(self.reverb_recent_bits.load(Ordering::Relaxed)),
-            reverb_second: f32::from_bits(self.reverb_second_bits.load(Ordering::Relaxed)),
             reverb_bass: f32::from_bits(self.reverb_bass_bits.load(Ordering::Relaxed)),
             reverb_echo: f32::from_bits(self.reverb_echo_bits.load(Ordering::Relaxed)),
             reverb_decay: f32::from_bits(self.reverb_decay_bits.load(Ordering::Relaxed)),
@@ -535,6 +589,7 @@ impl ControlBlock {
             ding_spread: f32::from_bits(self.ding_spread_bits.load(Ordering::Relaxed)),
             ding_brightness: f32::from_bits(self.ding_brightness_bits.load(Ordering::Relaxed)),
             ding_strings: f32::from_bits(self.ding_strings_bits.load(Ordering::Relaxed)),
+            tambura_jawari: f32::from_bits(self.tambura_jawari_bits.load(Ordering::Relaxed)),
             ding_formant_1: f32::from_bits(self.ding_formant_1_bits.load(Ordering::Relaxed)),
             ding_formant_2: f32::from_bits(self.ding_formant_2_bits.load(Ordering::Relaxed)),
             ding_formant_3: f32::from_bits(self.ding_formant_3_bits.load(Ordering::Relaxed)),
@@ -551,8 +606,6 @@ impl ControlBlock {
             deco_lag_beats: f32::from_bits(self.deco_lag_beats_bits.load(Ordering::Relaxed)),
             pan_handpan: f32::from_bits(self.pan_handpan_bits.load(Ordering::Relaxed)),
             pan_ding: f32::from_bits(self.pan_ding_bits.load(Ordering::Relaxed)),
-            pan_recent: f32::from_bits(self.pan_recent_bits.load(Ordering::Relaxed)),
-            pan_second: f32::from_bits(self.pan_second_bits.load(Ordering::Relaxed)),
             pan_bass: f32::from_bits(self.pan_bass_bits.load(Ordering::Relaxed)),
             pan_echo: f32::from_bits(self.pan_echo_bits.load(Ordering::Relaxed)),
             formant_rate: f32::from_bits(self.formant_rate_bits.load(Ordering::Relaxed)),
@@ -572,6 +625,14 @@ impl ControlBlock {
             ),
             fm_bass_feedback: f32::from_bits(self.fm_bass_feedback_bits.load(Ordering::Relaxed)),
             fm_bass_level: f32::from_bits(self.fm_bass_level_bits.load(Ordering::Relaxed)),
+            bass_line_amount: f32::from_bits(self.bass_line_amount_bits.load(Ordering::Relaxed)),
+            bass_line_variation: f32::from_bits(
+                self.bass_line_variation_bits.load(Ordering::Relaxed),
+            ),
+            bells_decay: f32::from_bits(self.bells_decay_bits.load(Ordering::Relaxed)),
+            bells_ratio: f32::from_bits(self.bells_ratio_bits.load(Ordering::Relaxed)),
+            bells_index: f32::from_bits(self.bells_index_bits.load(Ordering::Relaxed)),
+            bells_index_decay: f32::from_bits(self.bells_index_decay_bits.load(Ordering::Relaxed)),
             groove_click_enabled: self.groove_click_enabled.load(Ordering::Relaxed),
             groove_auto_lock: self.groove_auto_lock.load(Ordering::Relaxed),
             groove_lock_cmd: self
@@ -714,8 +775,12 @@ impl ControlBlock {
     }
 
     pub(crate) fn set_instrument_u8(&self, instrument: u8) {
-        self.instrument
-            .store(Instrument::from_u8(instrument).as_u8(), Ordering::Relaxed);
+        let instrument = Instrument::from_u8(instrument);
+        self.instrument.store(instrument.as_u8(), Ordering::Relaxed);
+        // Accompaniment bridge: keep Support wash synced to the voice being tuned.
+        if let Some(wash) = instrument.drone_wash() {
+            self.set_ding_wash(wash);
+        }
     }
 
     pub(crate) fn fm_bass_params(&self) -> FmBassParams {
@@ -1035,6 +1100,9 @@ impl ControlBlock {
             ParameterId::DingStrings => {
                 f32::from_bits(self.ding_strings_bits.load(Ordering::Relaxed))
             }
+            ParameterId::TamburaJawari => {
+                f32::from_bits(self.tambura_jawari_bits.load(Ordering::Relaxed))
+            }
             ParameterId::DingFormant1 => {
                 f32::from_bits(self.ding_formant_1_bits.load(Ordering::Relaxed))
             }
@@ -1104,6 +1172,24 @@ impl ControlBlock {
             }
             ParameterId::FmBassLevel => {
                 f32::from_bits(self.fm_bass_level_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::BassLineAmount => {
+                f32::from_bits(self.bass_line_amount_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::BassLineVariation => {
+                f32::from_bits(self.bass_line_variation_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::BellsDecay => {
+                f32::from_bits(self.bells_decay_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::BellsRatio => {
+                f32::from_bits(self.bells_ratio_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::BellsIndex => {
+                f32::from_bits(self.bells_index_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::BellsIndexDecay => {
+                f32::from_bits(self.bells_index_decay_bits.load(Ordering::Relaxed))
             }
         }
     }
@@ -1216,6 +1302,9 @@ impl ControlBlock {
             ParameterId::DingStrings => self
                 .ding_strings_bits
                 .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TamburaJawari => self
+                .tambura_jawari_bits
+                .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::DingFormant1 => self
                 .ding_formant_1_bits
                 .store(value.to_bits(), Ordering::Relaxed),
@@ -1294,6 +1383,24 @@ impl ControlBlock {
             ParameterId::FmBassLevel => self
                 .fm_bass_level_bits
                 .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::BassLineAmount => self
+                .bass_line_amount_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::BassLineVariation => self
+                .bass_line_variation_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::BellsDecay => self
+                .bells_decay_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::BellsRatio => self
+                .bells_ratio_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::BellsIndex => self
+                .bells_index_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::BellsIndexDecay => self
+                .bells_index_decay_bits
+                .store(value.to_bits(), Ordering::Relaxed),
         }
     }
 
@@ -1350,6 +1457,7 @@ impl ControlBlock {
         self.set_parameter_value(ParameterId::DingSpread, DEFAULT_DING_SPREAD);
         self.set_parameter_value(ParameterId::DingBrightness, DEFAULT_DING_BRIGHTNESS);
         self.set_parameter_value(ParameterId::DingStrings, DEFAULT_DING_STRINGS);
+        self.set_parameter_value(ParameterId::TamburaJawari, DEFAULT_TAMBURA_JAWARI);
         self.set_parameter_value(ParameterId::DingFormant1, DEFAULT_DING_FORMANT_1);
         self.set_parameter_value(ParameterId::DingFormant2, DEFAULT_DING_FORMANT_2);
         self.set_parameter_value(ParameterId::DingFormant3, DEFAULT_DING_FORMANT_3);
@@ -1382,6 +1490,12 @@ impl ControlBlock {
         self.set_parameter_value(ParameterId::FmBassIndexDecay, DEFAULT_FM_BASS_INDEX_DECAY);
         self.set_parameter_value(ParameterId::FmBassFeedback, DEFAULT_FM_BASS_FEEDBACK);
         self.set_parameter_value(ParameterId::FmBassLevel, DEFAULT_FM_BASS_LEVEL);
+        self.set_parameter_value(ParameterId::BassLineAmount, DEFAULT_BASS_LINE_AMOUNT);
+        self.set_parameter_value(ParameterId::BassLineVariation, DEFAULT_BASS_LINE_VARIATION);
+        self.set_parameter_value(ParameterId::BellsDecay, DEFAULT_BELLS_DECAY);
+        self.set_parameter_value(ParameterId::BellsRatio, DEFAULT_BELLS_RATIO);
+        self.set_parameter_value(ParameterId::BellsIndex, DEFAULT_BELLS_INDEX);
+        self.set_parameter_value(ParameterId::BellsIndexDecay, DEFAULT_BELLS_INDEX_DECAY);
         self.set_groove_click_enabled(DEFAULT_GROOVE_CLICK_ENABLED);
         self.set_groove_auto_lock(DEFAULT_GROOVE_AUTO_LOCK);
         self.request_groove_unlock();
@@ -1461,8 +1575,6 @@ struct ControlSnapshot {
     support_fade: f32,
     reverb_handpan: f32,
     reverb_ding: f32,
-    reverb_recent: f32,
-    reverb_second: f32,
     reverb_bass: f32,
     reverb_echo: f32,
     reverb_decay: f32,
@@ -1477,6 +1589,7 @@ struct ControlSnapshot {
     ding_spread: f32,
     ding_brightness: f32,
     ding_strings: f32,
+    tambura_jawari: f32,
     ding_formant_1: f32,
     ding_formant_2: f32,
     ding_formant_3: f32,
@@ -1493,8 +1606,6 @@ struct ControlSnapshot {
     deco_lag_beats: f32,
     pan_handpan: f32,
     pan_ding: f32,
-    pan_recent: f32,
-    pan_second: f32,
     pan_bass: f32,
     pan_echo: f32,
     formant_rate: f32,
@@ -1508,6 +1619,12 @@ struct ControlSnapshot {
     fm_bass_index_decay: f32,
     fm_bass_feedback: f32,
     fm_bass_level: f32,
+    bass_line_amount: f32,
+    bass_line_variation: f32,
+    bells_decay: f32,
+    bells_ratio: f32,
+    bells_index: f32,
+    bells_index_decay: f32,
     groove_click_enabled: bool,
     groove_auto_lock: bool,
     groove_lock_cmd: u8,
@@ -1556,6 +1673,7 @@ pub enum ParameterId {
     DingSpread,
     DingBrightness,
     DingStrings,
+    TamburaJawari,
     DingFormant1,
     DingFormant2,
     DingFormant3,
@@ -1588,6 +1706,12 @@ pub enum ParameterId {
     FmBassIndexDecay,
     FmBassFeedback,
     FmBassLevel,
+    BassLineAmount,
+    BassLineVariation,
+    BellsDecay,
+    BellsRatio,
+    BellsIndex,
+    BellsIndexDecay,
 }
 
 const MODAL_PARAMETERS: [ParameterId; 12] = [
@@ -1611,6 +1735,13 @@ const FM_BASS_PARAMETERS: [ParameterId; 5] = [
     ParameterId::FmBassIndex,
     ParameterId::FmBassIndexDecay,
     ParameterId::FmBassFeedback,
+];
+
+const BELLS_PARAMETERS: [ParameterId; 4] = [
+    ParameterId::BellsDecay,
+    ParameterId::BellsRatio,
+    ParameterId::BellsIndex,
+    ParameterId::BellsIndexDecay,
 ];
 
 const HANDPAN_PARAMETERS: [ParameterId; 9] = [
@@ -1642,10 +1773,11 @@ const DING_WASH_PARAMETERS: [ParameterId; 3] = [
     ParameterId::DingBrightness,
 ];
 
-const TAMBURA_PARAMETERS: [ParameterId; 3] = [
+const TAMBURA_PARAMETERS: [ParameterId; 4] = [
+    ParameterId::DingStrings,
     ParameterId::DingShape,
     ParameterId::DingSpread,
-    ParameterId::DingStrings,
+    ParameterId::TamburaJawari,
 ];
 
 const FORMANT_PARAMETERS: [ParameterId; 6] = [
@@ -1696,6 +1828,7 @@ impl ParameterId {
             ParameterId::DingSpread => 33,
             ParameterId::DingBrightness => 34,
             ParameterId::DingStrings => 35,
+            ParameterId::TamburaJawari => 79,
             ParameterId::DingFormant1 => 36,
             ParameterId::DingFormant2 => 37,
             ParameterId::DingFormant3 => 38,
@@ -1733,6 +1866,12 @@ impl ParameterId {
             ParameterId::FmBassIndexDecay => 71,
             ParameterId::FmBassFeedback => 72,
             ParameterId::FmBassLevel => 70,
+            ParameterId::BassLineAmount => 73,
+            ParameterId::BassLineVariation => 74,
+            ParameterId::BellsDecay => 75,
+            ParameterId::BellsRatio => 76,
+            ParameterId::BellsIndex => 77,
+            ParameterId::BellsIndexDecay => 78,
         }
     }
 
@@ -1774,6 +1913,7 @@ impl ParameterId {
             33 => Some(ParameterId::DingSpread),
             34 => Some(ParameterId::DingBrightness),
             35 => Some(ParameterId::DingStrings),
+            79 => Some(ParameterId::TamburaJawari),
             36 => Some(ParameterId::DingFormant1),
             37 => Some(ParameterId::DingFormant2),
             38 => Some(ParameterId::DingFormant3),
@@ -1811,6 +1951,12 @@ impl ParameterId {
             70 => Some(ParameterId::FmBassLevel),
             71 => Some(ParameterId::FmBassIndexDecay),
             72 => Some(ParameterId::FmBassFeedback),
+            73 => Some(ParameterId::BassLineAmount),
+            74 => Some(ParameterId::BassLineVariation),
+            75 => Some(ParameterId::BellsDecay),
+            76 => Some(ParameterId::BellsRatio),
+            77 => Some(ParameterId::BellsIndex),
+            78 => Some(ParameterId::BellsIndexDecay),
             _ => None,
         }
     }
@@ -1825,6 +1971,10 @@ impl ParameterId {
 
     pub(crate) fn fm_bass() -> &'static [ParameterId] {
         &FM_BASS_PARAMETERS
+    }
+
+    pub(crate) fn bells() -> &'static [ParameterId] {
+        &BELLS_PARAMETERS
     }
 
     pub(crate) fn analysis() -> &'static [ParameterId] {
@@ -1894,6 +2044,7 @@ impl ParameterId {
             ParameterId::DingSpread => "Spread",
             ParameterId::DingBrightness => "Brightness",
             ParameterId::DingStrings => "Strings",
+            ParameterId::TamburaJawari => "Jawari",
             ParameterId::DingFormant1 => "Formant 1",
             ParameterId::DingFormant2 => "Formant 2",
             ParameterId::DingFormant3 => "Formant 3",
@@ -1902,7 +2053,7 @@ impl ParameterId {
             ParameterId::DingQ2 => "Q 2",
             ParameterId::DingQ3 => "Q 3",
             ParameterId::MixHandpan => "Handpan",
-            ParameterId::MixDing => "Ding",
+            ParameterId::MixDing => "Root",
             ParameterId::MixRecent => "Recent",
             ParameterId::MixSecond => "Second",
             ParameterId::MixBass => "Bass",
@@ -1926,6 +2077,12 @@ impl ParameterId {
             ParameterId::FmBassIndexDecay => "Index decay",
             ParameterId::FmBassFeedback => "Feedback",
             ParameterId::FmBassLevel => "Level",
+            ParameterId::BassLineAmount => "Line amount",
+            ParameterId::BassLineVariation => "Line variation",
+            ParameterId::BellsDecay => "Decay",
+            ParameterId::BellsRatio => "Ratio",
+            ParameterId::BellsIndex => "Index",
+            ParameterId::BellsIndexDecay => "Index decay",
         }
     }
 
@@ -1972,6 +2129,7 @@ impl ParameterId {
             ParameterId::DingSpread => DING_SPREAD_RANGE,
             ParameterId::DingBrightness => DING_BRIGHTNESS_RANGE,
             ParameterId::DingStrings => DING_STRINGS_RANGE,
+            ParameterId::TamburaJawari => TAMBURA_JAWARI_RANGE,
             ParameterId::DingFormant1 | ParameterId::DingFormant2 | ParameterId::DingFormant3 => {
                 DING_FORMANT_RANGE
             }
@@ -2004,6 +2162,12 @@ impl ParameterId {
             ParameterId::FmBassIndexDecay => FM_BASS_INDEX_DECAY_RANGE,
             ParameterId::FmBassFeedback => FM_BASS_FEEDBACK_RANGE,
             ParameterId::FmBassLevel => FM_BASS_LEVEL_RANGE,
+            ParameterId::BassLineAmount => BASS_LINE_AMOUNT_RANGE,
+            ParameterId::BassLineVariation => BASS_LINE_VARIATION_RANGE,
+            ParameterId::BellsDecay => BELLS_DECAY_RANGE,
+            ParameterId::BellsRatio => BELLS_RATIO_RANGE,
+            ParameterId::BellsIndex => BELLS_INDEX_RANGE,
+            ParameterId::BellsIndexDecay => BELLS_INDEX_DECAY_RANGE,
         }
     }
 
@@ -2077,7 +2241,8 @@ impl ParameterId {
             ParameterId::DingShape => format!("{value:.2}"),
             ParameterId::DingSpread => format!("{value:.0} cents"),
             ParameterId::DingBrightness => format!("{value:.2}"),
-            ParameterId::DingStrings => format!("{value:.0}"),
+            ParameterId::DingStrings => TamburaBank::string_mode_label(value).to_string(),
+            ParameterId::TamburaJawari => format!("{value:.2}"),
             ParameterId::DingFormant1 | ParameterId::DingFormant2 | ParameterId::DingFormant3 => {
                 format!("{value:.0} Hz")
             }
@@ -2109,7 +2274,13 @@ impl ParameterId {
             | ParameterId::FmBassIndex
             | ParameterId::FmBassIndexDecay
             | ParameterId::FmBassFeedback
-            | ParameterId::FmBassLevel => format!("{value:.2}"),
+            | ParameterId::FmBassLevel
+            | ParameterId::BassLineAmount
+            | ParameterId::BassLineVariation
+            | ParameterId::BellsDecay
+            | ParameterId::BellsRatio
+            | ParameterId::BellsIndex
+            | ParameterId::BellsIndexDecay => format!("{value:.2}"),
         }
     }
 
@@ -2162,6 +2333,7 @@ impl ParameterId {
             ParameterId::DingSpread => "ding_spread",
             ParameterId::DingBrightness => "ding_brightness",
             ParameterId::DingStrings => "ding_strings",
+            ParameterId::TamburaJawari => "tambura_jawari",
             ParameterId::DingFormant1 => "ding_formant_1",
             ParameterId::DingFormant2 => "ding_formant_2",
             ParameterId::DingFormant3 => "ding_formant_3",
@@ -2194,6 +2366,12 @@ impl ParameterId {
             ParameterId::FmBassIndexDecay => "fm_bass_index_decay",
             ParameterId::FmBassFeedback => "fm_bass_feedback",
             ParameterId::FmBassLevel => "fm_bass_level",
+            ParameterId::BassLineAmount => "bass_line_amount",
+            ParameterId::BassLineVariation => "bass_line_variation",
+            ParameterId::BellsDecay => "bells_decay",
+            ParameterId::BellsRatio => "bells_ratio",
+            ParameterId::BellsIndex => "bells_index",
+            ParameterId::BellsIndexDecay => "bells_index_decay",
         }
     }
 
@@ -2240,6 +2418,7 @@ impl ParameterId {
             "ding_spread" => Some(ParameterId::DingSpread),
             "ding_brightness" => Some(ParameterId::DingBrightness),
             "ding_strings" => Some(ParameterId::DingStrings),
+            "tambura_jawari" => Some(ParameterId::TamburaJawari),
             "ding_formant_1" => Some(ParameterId::DingFormant1),
             "ding_formant_2" => Some(ParameterId::DingFormant2),
             "ding_formant_3" => Some(ParameterId::DingFormant3),
@@ -2272,6 +2451,12 @@ impl ParameterId {
             "fm_bass_index_decay" => Some(ParameterId::FmBassIndexDecay),
             "fm_bass_feedback" => Some(ParameterId::FmBassFeedback),
             "fm_bass_level" => Some(ParameterId::FmBassLevel),
+            "bass_line_amount" => Some(ParameterId::BassLineAmount),
+            "bass_line_variation" => Some(ParameterId::BassLineVariation),
+            "bells_decay" => Some(ParameterId::BellsDecay),
+            "bells_ratio" => Some(ParameterId::BellsRatio),
+            "bells_index" => Some(ParameterId::BellsIndex),
+            "bells_index_decay" => Some(ParameterId::BellsIndexDecay),
             _ => None,
         }
     }
@@ -2551,6 +2736,7 @@ fn main() -> anyhow::Result<()> {
     control.set_parameter_value(ParameterId::DingSpread, snapshot.ding_spread);
     control.set_parameter_value(ParameterId::DingBrightness, snapshot.ding_brightness);
     control.set_parameter_value(ParameterId::DingStrings, snapshot.ding_strings);
+    control.set_parameter_value(ParameterId::TamburaJawari, snapshot.tambura_jawari);
     control.set_parameter_value(ParameterId::DingFormant1, snapshot.ding_formant_1);
     control.set_parameter_value(ParameterId::DingFormant2, snapshot.ding_formant_2);
     control.set_parameter_value(ParameterId::DingFormant3, snapshot.ding_formant_3);
@@ -2583,6 +2769,12 @@ fn main() -> anyhow::Result<()> {
     control.set_parameter_value(ParameterId::FmBassIndexDecay, snapshot.fm_bass_index_decay);
     control.set_parameter_value(ParameterId::FmBassFeedback, snapshot.fm_bass_feedback);
     control.set_parameter_value(ParameterId::FmBassLevel, snapshot.fm_bass_level);
+    control.set_parameter_value(ParameterId::BassLineAmount, snapshot.bass_line_amount);
+    control.set_parameter_value(ParameterId::BassLineVariation, snapshot.bass_line_variation);
+    control.set_parameter_value(ParameterId::BellsDecay, snapshot.bells_decay);
+    control.set_parameter_value(ParameterId::BellsRatio, snapshot.bells_ratio);
+    control.set_parameter_value(ParameterId::BellsIndex, snapshot.bells_index);
+    control.set_parameter_value(ParameterId::BellsIndexDecay, snapshot.bells_index_decay);
     control.set_groove_click_enabled(snapshot.groove_click_enabled);
     control.set_groove_auto_lock(snapshot.groove_auto_lock);
 
@@ -2884,7 +3076,11 @@ where
         let mut engine = Engine::new(cfg.sample_rate.0 as f32, params);
         let mut handpan = Handpan::new(cfg.sample_rate.0 as f32);
         let mut fm_bass = FmBass::new(cfg.sample_rate.0 as f32);
+        let mut bass_line = BassLine::new(cfg.sample_rate.0 as f32);
         let mut bells = Bells::new(cfg.sample_rate.0 as f32);
+        let mut resonator = DroneVoice::new(cfg.sample_rate.0 as f32, DroneVoiceKind::Resonator);
+        let mut waveshape = DroneVoice::new(cfg.sample_rate.0 as f32, DroneVoiceKind::Waveshape);
+        let mut tambura = DroneVoice::new(cfg.sample_rate.0 as f32, DroneVoiceKind::Tambura);
         let mut support = Support::new(cfg.sample_rate.0 as f32);
         let mut groove = GrooveTracker::new(cfg.sample_rate.0 as f32);
         let mut play_memory = PlayMemory::new(cfg.sample_rate.0 as f32);
@@ -2938,6 +3134,7 @@ where
                     support.set_ding_spread(snapshot.ding_spread);
                     support.set_ding_brightness(snapshot.ding_brightness);
                     support.set_ding_strings(snapshot.ding_strings);
+                    support.set_tambura_jawari(snapshot.tambura_jawari);
                     support.set_ding_formant(0, snapshot.ding_formant_1);
                     support.set_ding_formant(1, snapshot.ding_formant_2);
                     support.set_ding_formant(2, snapshot.ding_formant_3);
@@ -2953,10 +3150,15 @@ where
                     support.set_part_level(4, snapshot.mix_taps);
                     decorations.set_density(snapshot.deco_density);
                     decorations.set_lag_beats(snapshot.deco_lag_beats);
+                    bells.set_decay(snapshot.bells_decay);
+                    bells.set_ratio(snapshot.bells_ratio);
+                    bells.set_index(snapshot.bells_index);
+                    bells.set_index_decay(snapshot.bells_index_decay);
                     reverb.set_handpan_send(snapshot.reverb_handpan);
+                    // Drone strip send/pan cover Root+Recent+Second together.
                     reverb.set_ding_send(snapshot.reverb_ding);
-                    reverb.set_recent_send(snapshot.reverb_recent);
-                    reverb.set_second_send(snapshot.reverb_second);
+                    reverb.set_recent_send(snapshot.reverb_ding);
+                    reverb.set_second_send(snapshot.reverb_ding);
                     reverb.set_bass_send(snapshot.reverb_bass);
                     reverb.set_echo_send(snapshot.reverb_echo);
                     reverb.set_decay(snapshot.reverb_decay);
@@ -2976,12 +3178,21 @@ where
                         snapshot.handpan_ding,
                         snapshot.handpan_tuning,
                     );
+                    fm_bass.set_decay(snapshot.fm_bass_decay);
+                    fm_bass.set_ratio(snapshot.fm_bass_ratio);
+                    fm_bass.set_index(snapshot.fm_bass_index);
+                    fm_bass.set_index_decay(snapshot.fm_bass_index_decay);
+                    fm_bass.set_feedback(snapshot.fm_bass_feedback);
+                    bass_line.set_amount(snapshot.bass_line_amount);
+                    bass_line.set_variation(snapshot.bass_line_variation);
+                    bass_line.set_layout(snapshot.handpan_scale, snapshot.handpan_ding);
                     if triggered {
                         for strike in strikes.iter().take(strike_count) {
                             handpan.strike_at(strike.0, strike.1, strike.2);
                             support.hear(strike.0, strike.1);
                             groove.hear(strike.0, strike.1);
                             play_memory.hear(strike.0, strike.1, strike.2);
+                            bass_line.hear(strike.0, strike.1);
                         }
                     }
                     let deco_gain = support.echo_gain();
@@ -2995,10 +3206,20 @@ where
                                 .mix_handpan
                                 .clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1)
                         };
+                    // Bass strip mute/solo is support part 3 — apply the same gate to
+                    // the FM Bass Line (Support's drone already uses part_gain).
+                    const BASS_PART_BIT: u8 = 1 << 3;
+                    let bass_muted = (snapshot.support_muted & BASS_PART_BIT) != 0;
+                    let bass_soloed = (snapshot.support_solo & BASS_PART_BIT) != 0;
+                    let fm_line_level = if bass_muted || (any_solo && !bass_soloed) {
+                        0.0
+                    } else {
+                        snapshot
+                            .fm_bass_level
+                            .clamp(FM_BASS_LEVEL_RANGE.0, FM_BASS_LEVEL_RANGE.1)
+                    };
                     let pan_handpan = snapshot.pan_handpan;
                     let pan_ding = snapshot.pan_ding;
-                    let pan_recent = snapshot.pan_recent;
-                    let pan_second = snapshot.pan_second;
                     let pan_bass = snapshot.pan_bass;
                     let pan_echo = snapshot.pan_echo;
                     let mut samples_in_block = 0u32;
@@ -3022,20 +3243,22 @@ where
                                 }
                             }
                         });
+                        bass_line.tick(&groove, |note, amp, place| {
+                            fm_bass.strike_at(note, amp, place);
+                        });
                         samples_in_block = samples_in_block.wrapping_add(1);
                         if samples_in_block.is_multiple_of(64) {
                             control.publish_groove(&groove.snapshot());
                         }
                         let hand = handpan.next_sample() * mix_handpan;
+                        let line = StrikeVoice::next_sample(&mut fm_bass) * fm_line_level;
                         let echo_sig = match echo_voice {
                             EchoInstrument::Bells => StrikeVoice::next_sample(&mut bells),
                             EchoInstrument::Handpan => 0.0,
                         };
                         let parts = support.next_parts().limited();
                         let (hand_l, hand_r) = stereo_pan(pan_handpan);
-                        let (ding_l, ding_r) = stereo_pan(pan_ding);
-                        let (recent_l, recent_r) = stereo_pan(pan_recent);
-                        let (second_l, second_r) = stereo_pan(pan_second);
+                        let (drone_l, drone_r) = stereo_pan(pan_ding);
                         let (bass_l, bass_r) = stereo_pan(pan_bass);
                         let (echo_l, echo_r) = stereo_pan(pan_echo);
                         let (wet_l, wet_r) = reverb.next_wet(
@@ -3046,19 +3269,18 @@ where
                             parts.bass,
                             echo_sig,
                         );
+                        let drone = parts.ding + parts.recent + parts.second;
                         let dry_l = hand * hand_l
-                            + parts.ding * ding_l
-                            + parts.recent * recent_l
-                            + parts.second * second_l
+                            + drone * drone_l
                             + parts.bass * bass_l
                             + echo_sig * echo_l
+                            + line
                             + click;
                         let dry_r = hand * hand_r
-                            + parts.ding * ding_r
-                            + parts.recent * recent_r
-                            + parts.second * second_r
+                            + drone * drone_r
                             + parts.bass * bass_r
                             + echo_sig * echo_r
+                            + line
                             + click;
                         (dry_l + wet_l, dry_r + wet_r)
                     });
@@ -3080,6 +3302,46 @@ where
                         .clamp(FM_BASS_LEVEL_RANGE.0, FM_BASS_LEVEL_RANGE.1);
                     write_stereo_frames::<T>(data, channels, &audio_tap, || {
                         let mono = StrikeVoice::next_sample(&mut fm_bass) * level;
+                        (mono, mono)
+                    })
+                } else if snapshot.instrument == Instrument::Bells.as_u8() {
+                    bells.set_decay(snapshot.bells_decay);
+                    bells.set_ratio(snapshot.bells_ratio);
+                    bells.set_index(snapshot.bells_index);
+                    bells.set_index_decay(snapshot.bells_index_decay);
+                    if triggered {
+                        for strike in strikes.iter().take(strike_count) {
+                            // Pad pitch as written — echo role still octave-shifts.
+                            bells.strike_at(strike.0, strike.1, strike.2);
+                        }
+                    }
+                    let level = snapshot
+                        .mix_taps
+                        .clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
+                    write_stereo_frames::<T>(data, channels, &audio_tap, || {
+                        let mono = StrikeVoice::next_sample(&mut bells) * level;
+                        (mono, mono)
+                    })
+                } else if matches!(
+                    Instrument::from_u8(snapshot.instrument),
+                    Instrument::Resonator | Instrument::Waveshape | Instrument::Tambura
+                ) {
+                    let voice = match Instrument::from_u8(snapshot.instrument) {
+                        Instrument::Waveshape => &mut waveshape,
+                        Instrument::Tambura => &mut tambura,
+                        _ => &mut resonator,
+                    };
+                    apply_drone_voice_params(voice, &snapshot);
+                    if triggered {
+                        for strike in strikes.iter().take(strike_count) {
+                            voice.strike_at(strike.0, strike.1, strike.2);
+                        }
+                    }
+                    let level = snapshot
+                        .mix_ding
+                        .clamp(DRONE_LEVEL_RANGE.0, DRONE_LEVEL_RANGE.1);
+                    write_stereo_frames::<T>(data, channels, &audio_tap, || {
+                        let mono = StrikeVoice::next_sample(voice) * level;
                         (mono, mono)
                     })
                 } else {
@@ -3142,6 +3404,27 @@ fn log_buffer_acceptance(label: &str, buffer_size: &cpal::BufferSize) {
         cpal::BufferSize::Fixed(n) => println!("Audio buffer ({label}): {n} frames"),
         cpal::BufferSize::Default => println!("Audio buffer ({label}): device default"),
     }
+}
+
+fn apply_drone_voice_params(voice: &mut DroneVoice, snapshot: &ControlSnapshot) {
+    voice.set_shape(snapshot.ding_shape);
+    voice.set_spread(snapshot.ding_spread);
+    voice.set_brightness(snapshot.ding_brightness);
+    voice.set_strings(snapshot.ding_strings);
+    voice.set_jawari(snapshot.tambura_jawari);
+    voice.set_formant(0, snapshot.ding_formant_1);
+    voice.set_formant(1, snapshot.ding_formant_2);
+    voice.set_formant(2, snapshot.ding_formant_3);
+    voice.set_formant_q(0, snapshot.ding_q_1);
+    voice.set_formant_q(1, snapshot.ding_q_2);
+    voice.set_formant_q(2, snapshot.ding_q_3);
+    voice.set_formant_rate(snapshot.formant_rate);
+    voice.set_formant_depth(snapshot.formant_depth);
+    let ding = snapshot.handpan_ding;
+    let tuning = snapshot.handpan_tuning;
+    let root = handpan_interval_hz(ding, 0, tuning).max(1.0);
+    let fifth = handpan_interval_hz(ding, 7, tuning);
+    voice.set_fifth_ratio(fifth / root);
 }
 
 #[inline]
