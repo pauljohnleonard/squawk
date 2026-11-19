@@ -1,115 +1,148 @@
 # Accompaniment
 
-Notes on the layer that plays under the handpan, as it works today. The code is `crates/squawk-engine/src/support.rs`. The audio callback adds it to the handpan only while the handpan is the selected instrument.
+Notes on the desk under the lead instrument, as it works today, plus a few product directions that should stay true as the code moves.
 
-The handpan is still the voice. This layer is a pad under it. It has three parts: three resonant bands, one soft bass tone, and an occasional quiet tap.
+DSP lives mainly in `crates/squawk-engine/src/support.rs`, with tabla / FM bass / phrase clock / reverb as sibling engine modules. The Handpan **desk** (strips, mute/solo, trim, pan, send, meters) is wired in `crates/squawk-app` (`ui.rs` + the Handpan branch of the audio callback in `main.rs`).
 
-## What it hears
+**Today:** Handpan is the lead, and the accompaniment desk below runs while Handpan is selected. That is the current center of gravity, not a hard rule that only a handpan can sit in the Main strip.
+
+## Direction (not blocking current polish)
+
+These do not demand a big rewrite now; they are constraints to keep in mind:
+
+1. **Any playable instrument can be the lead.** Handpan is first; other strike / pad voices should be able to take Main without redesigning the desk idea.
+2. **Insert effects** (per-strip or bus inserts beyond today’s send reverb) may come later — design room, not a near-term build.
+3. **Support should stay easy to experiment in.** Washes, followers, drones, groove roles, and future beds should stay swappable voices on strips, not a frozen “one pad engine” shape.
+4. **External controls.** MIDI and similar hardware should drive the same parameters the UI does; the computer keyboard is a convenience, not the long-term control surface.
+5. **Embedded / Pi.** Much of the egui desk may go away on a screenless box, but **presets designed on the desktop** (settings / parameter snapshots) should still load and run. Keep the control schema and persistence host-friendly, not UI-only.
+
+## Desk overview
+
+With Handpan selected, the right-hand mixer is a desk of strips, not a single “Support level” column:
+
+| Section | Strips |
+| --- | --- |
+| Main | Handpan |
+| Support | Resonator, Waveshape, Tambura, Root drone, Followers, Bass (FM line), Tabla, Echo |
+| Effects | Reverb |
+
+Each strip (where it applies) has **Pan**, **Level**, a peak **meter**, **Mute** / **Solo**, and a reverb **Send**. Clicking a strip name opens its inspector (trim, voice knobs, groove amount, and so on).
+
+### Trim vs Level
+
+- **Trim** (inspector, before mixer): instrument gain into the strip. Default `1`. Range `0…4`. Use this to boost a quiet voice without parking the strip Level above unity.
+- **Level** (strip fader): mix contribution. Default `1`. Range `0…2`.
+
+For the three washes, the callback feeds Support as `wash_level = trim × Level`. That product is a **blend weight on the shared formant bus**, not a post-gain on three identical coloured copies. Turning one wash Level down changes how much of that voice is in the shared colour; it does not run three independent FX chains.
+
+Handpan, Followers, Root drone, FM Bass, Tabla, and Echo also use trim × Level (or trim into part level) on their paths. The Support engine bus itself is held at **unity** (`set_level(1.0)`), so strip Levels share the same reference as the Handpan fader. The old `DEFAULT_SUPPORT_LEVEL` of `0.35` was a pre-desk “quiet bed” attenuator and is no longer applied as a master pad gain in the callback.
+
+### Mute / Solo
+
+Wash mute/solo bits (Resonator / Waveshape / Tambura) are separate from Support part bits (Root drone / Echo) and from Handpan / Bass / Tabla / Reverb solo flags.
+
+- Soloing a wash isolates that wash via Support’s wash gain and ducks Root drone, Followers, and Echo.
+- Wash solo is **not** treated as `foreign_solo`. Marking washes as foreign would zero the shared Root envelope and silence the soloed wash as well.
+- Soloing Handpan, Bass, Tabla, Reverb, or a non-wash Support part sets `foreign_solo` so washes / followers duck appropriately.
+
+### Reverb sends
+
+Each strip that can send has its own Send control. Wash sends (Ding / Waveshape / Tambura) and the Followers send are independent; they are not linked to a single “Support send.”
+
+## What Support hears
 
 Every handpan strike arrives as a note and a strength. The note is snapped to the nearest of the ten pads in the current scale. The strength is the same amplitude the handpan was struck with.
 
-The current scale, ding, and tuning (Equal or Just) are the same ones the handpan is using. Changing them retunes this layer. The bands and the bass glide to the new pitches. A tap that is already aimed snaps.
+Scale, ding, and tuning match the handpan. Changing them retunes washes, followers, and root. Bands and the bass glide to the new pitches.
 
-The last 16 strikes are kept: when they happened, which scale degree they were, and how hard. Harder strikes count for more. A very soft strike still counts a little.
+The last 16 strikes are kept (time, degree, strength). Harder strikes count for more. A soft strike still counts a little.
 
-A strike closer than 80 ms to the previous one is a flam. It updates which notes have been played, and the bands follow that. It does not move the beat, and it does not reset the swell.
+A strike closer than 80 ms to the previous one is a flam: it updates which notes have been played (bands follow), but does not move the beat or reset the swell.
 
-A gap of 2.5 seconds or more is a pause. The next strike starts the swell again from the top. The long gap is not treated as a beat.
+A gap of 2.5 seconds or more is a pause. The next strike starts the swell again from the top.
 
-Strike position (center, between, shoulder) is not used. Only the note and the strength come across.
+Strike place (center / between / shoulder) is not used by Support — only note and strength.
 
-## The beat
+## Two clocks
 
-Before any playing, the layer assumes a beat of 0.55 seconds, about 109 bpm. The swell stays still until three real gaps have been heard.
+Support keeps its own **pulse / breath** clock from strike gaps (median of recent accepted gaps, default assumption ~0.55 s before enough gaps are heard). That drives follower swell and related motion.
 
-Each accepted gap is the time between strikes, ignoring flams and pauses. The beat is the median of the last six of those gaps, so one late note does not throw it. After the first gap, each new median only pulls the beat 20% of the way. A tempo change takes several notes to settle. The beat is kept between 0.25 and 1.6 seconds.
+Groove lock + **PhraseClock** are separate: after tempo locks from playing, tabla theka and the FM bass line walk a shared phrase. Support pulse does not have to lock to the theka; musically they can sit on different feels today.
 
-The swell phase goes back to zero on every accepted strike, so the loud part of the cycle sits on the strike. If a strike does not come, the phase keeps running and wraps on its own. That free-running wrap still counts as a beat for the bass vote below. After a rest, the swell is no longer heard. See Starting and stopping.
+## Washes (Resonator / Waveshape / Tambura)
 
-## The controls
+Three voices share one Root mass-spring + formant colour bus. Levels are blend weights into that bus (see Trim vs Level above).
 
-While the handpan is selected, the right-hand column under the peak meter is the accompaniment. The positions are saved with the other settings, and the next launch starts from them. Reset to defaults writes the factory values back, including these sliders and the "Rows set where the strike lands" checkbox.
+- **Resonator** — noise-driven resonant band around the ding / root path. Under Handpan it clears on each strike and blooms after a short gap (~0.28 s, or ~35% of the Support beat) so it fills space instead of attacking with the lead. Register: Unison / Octave down / Fifth / Octave + fifth.
+- **Waveshape** — waveshaped ding voice into the same coloured bus. Same strike space-gate and register options as Resonator.
+- **Tambura** — plucked-string bank (jawari / pick / strum / cycle); string count and solo-string audition live in its inspector.
 
-Support level scales the whole layer: bands, bass, and taps. It runs from 0 to 1 and starts at 0.35. At 0 the output is silent. The layer keeps listening and keeps its resonators moving, so turning the level back up does not start from nothing.
+Shared formant controls (rate, depth, three formant Hz / Q) colour the combined wash body. Band motion knobs (Width, Wander, Drift, Motion) still shape the underlying resonant motion.
 
-Support pulse is how deep the swell is. It runs from 0 to 1 and starts at 0.55. At 0 the bands hold a steady level. At 1 they dip to about a third of their peak halfway through the beat. The default 0.55 is a moderate breath, down to about two thirds at the midpoint. Until three gaps have been heard, the pulse knob is ignored and the layer stays steady.
+Inspectors also expose **Trim** for each wash. Strip Level / Mute / Solo / Send live on the desk row.
 
-The bass takes only a third of that swell, and it sits on a floor, so the low note stays present while the bands breathe.
+## Followers
 
-Width runs from 0 to 1 and starts at 1. The bands are noise through a resonator, and this slider is how much of that noise they keep. At 1 each band uses the widths in the table below, which is the sound the layer started with. The ding band then opens from a damping of 0.055 to 0.17, about 15 Hz to 50 Hz around D3, and that open setting is the wash. At 0 all three bands sit near a damping of 0.01, a narrow tone with a little breath. A lower Width is the more tonal band. The bass and the taps are already narrow tones. They do not follow this slider.
+Soft bands that track recent scale degrees under the washes.
 
-Wander is the random walk of each band's center, in cents. It runs from 0 to 40 and starts at 14. A new target is picked every 0.9 to 2.1 seconds and approached over about 1.8 seconds. At 0 the center stays on the aim. The note it belongs to does not change.
+- Strip **Level** and **Trim** scale the Followers bus (`(recent + second) × trim × Level`).
+- **Follower 1** / **Follower 2** (`MixRecent` / `MixSecond`) must be above 0 or you hear nothing from that voice.
+- **Breath** (`SupportTone`): `0` = clearer tonal drive; `1` = noise-driven (breathy).
+- **Pulse** (`SupportPulse`): swell depth against Support’s own beat (default `0.55`). Until three gaps have been heard, pulse is ignored and the layer stays steady. The bass / root path takes a shallower share of that swell.
+- **Fade** (`SupportFade`): how long tone takes to leave after the ~2 s presence hold (default `4` s, range `0.5…12`).
+- Band motion (Width / Wander / Drift / Motion) lives here as well for the follower colour bands.
 
-Drift is the slow slide of the filter, in cents, on the same oscillator as the width. It runs from 0 to 60 and starts at 26, which is the ding band. The two color bands keep their present share of that amount, 16 and 18 against 26, so they stay a little quieter in pitch than the ding band. At 0 the center does not slide with the filter.
+Aims:
 
-Motion multiplies how fast the width opens and closes. It runs from 0.25 to 3 and starts at 1, the rates in the table. The small jitter that keeps the cycle off a clock stays in proportion.
+- Follower colour bands track recent degrees (last eight strikes, newer and harder weighted more).
+- Centers glide (~0.45 s time constant) with wander / drift / width LFOs as in the engine tables.
 
-Fade is how long the tone takes to leave after the 2 second hold. It runs from 0.5 to 12 seconds and starts at 4. The swell still falls over about a second, ahead of the tone.
+## Root drone
 
-## Starting and stopping
+Low pedal on the key root (octave under the ding, or two octaves when one would sit above ~160 Hz). Narrow tonal drive.
 
-The layer is silent until the first strike. The resonators are already running, so the entrance is a fade of about half a second, not a click. A flam counts as playing.
+- Fades in when you play, then **holds** until Mute or Level / presence clears it (it can keep sounding after pad presence has faded).
+- Strip Level mixes it; **Trim** feeds Support’s root part level.
+- Wash solo ducks it.
 
-For about 2 seconds after the last strike, the pad stays as it was. That is the same gap that stops the taps, and it is inside the 2.5 second pause that is not a beat. A breath between notes does not drop the accompaniment.
+## Echo
 
-After that hold, two things happen. The swell depth falls over about a second, so the pulse stops while the tone is still there. The tone then fades over the Fade time, 4 seconds unless that slider has been moved. Bands, bass, and any remaining tap all go. This also takes away the slow wobble between two bands that are sitting on nearly the same note.
+Quiet decorative taps / delayed pad hits, driven from play memory + decorations, voiced as Bells or Handpan (Echo instrument choice).
 
-The next strike brings the layer back over the same half second. The remembered beat is still there, and that strike puts the swell back at the top of its cycle.
+- Strip Level is the taps / echo bus (`MixTaps`).
+- **Trim** scales the echo part inside Support’s `echo_gain` path.
+- Held back when washes are soloed or when Echo is muted; respects foreign solo.
 
-## The three bands
+## Groove lines (Bass + Tabla)
 
-These are the pad. Each one is a mass-spring, the same kind of resonator as a handpan mode. It is driven by noise, and the sound taken from it is the velocity. That is a band of pitches around a center, not a sine.
+After Groove locks tempo from playing:
 
-The center each band is aiming at is always a note of the current scale.
+- **Tabla** strip — theka amount, groove pattern, trim × Level into the tabla voice; walks bols on PhraseClock steps.
+- **Bass** strip — FM bass line amount / variation; shares the same phrase clock (root tends to land on sam after lock). Amount `0` turns the line off. Has its own reverb Send (separate from Root drone).
 
-- The first band aims at the ding, always.
-- The second aims at the scale degree you have been playing most, over the last eight strikes. Newer strikes count more than older ones, and harder strikes count more than softer ones.
-- The third aims at the next most played degree in that same window. If you have only been playing one degree, it sits with the second band.
+These are separate from Support’s Root drone. Groove click / sensitivity / phase pull live in the Groove window, not on the strip row.
 
-When the aim changes, the center glides. The time constant is 0.45 seconds, so it is about halfway in half a second and settled after a bit more than a second.
+## Reverb
 
-Around that aim, two slow motions keep the band from sitting still. Wander and Drift, above, set how far they go. Motion sets how fast the opening and closing runs.
+Stereo wet bus. Each sending strip has its own Send; the Reverb strip has Level / Mute / Pan (and can be soloed as a desk channel). Decay and tone live in the Reverb inspector.
 
-The width opens and closes. A very slow oscillator moves the damping between a narrower and a wider setting. Width and center are on the same oscillator, a quarter cycle apart, so the band slides as it opens. Each band has its own rate, and that rate is nudged by a few percent every second or two so the cycle is not a clock. The table is the Width slider at 1. Turning Width down pulls every band toward the same narrow damping, so the wash becomes a tone.
+## Presence and starting / stopping
 
-The three bands are tuned differently. The ding band is the widest and the loudest. The other two are narrower, so the color notes are easier to hear as pitches.
+Washes and followers stay silent until the first strike (resonators already running — entrance is a ~0.5 s fade). A flam counts as playing.
 
-| Band | Aims at | How often the filter cycles | Width (damping) | Slow center drift | Mix |
-| --- | --- | --- | --- | --- | --- |
-| Ding | the ding | about every 33 seconds | 0.055 to 0.17 | ±26 cents | 1.00 |
-| Color | the recent degree | about every 22 seconds | 0.040 to 0.09 | ±16 cents | 0.72 |
-| Second color | the next degree | about every 15 seconds | 0.045 to 0.10 | ±18 cents | 0.50 |
+For ~2 s after the last strike, pad presence holds. Then pulse depth falls (~1 s) and tone fades over **Fade**. Root drone uses its own presence path and can hold longer.
 
-Damping here is the resonator's zeta. The audible width is about `2 × zeta × frequency`. Around a D3 ding (about 147 Hz) the ding band is roughly 15 Hz wide when it is shut and about 50 Hz wide when it is open. Higher notes are wider in hertz by the same proportion. The three oscillators start at different points in their cycle, so the bands do not open together.
+The next strike brings pad presence back; remembered Support beat remains.
 
-Before the first strike the bands are aimed at the ding, because that is the only degree with any weight. They are not heard until a strike opens the fade.
+## How a Handpan frame is mixed (today)
 
-## The bass
+Rough order in the audio callback (Handpan instrument branch):
 
-One more mass-spring, an octave under a scale degree. If one octave down would sit above 160 Hz, it goes down two octaves instead. It is driven by a quiet sine at its own pitch, with a low damping (zeta 0.006), so it stays a tone. It glides when its note changes, with the same 0.45 second time constant as the bands.
+1. Advance groove, decorations (echo strikes), phrase clock → tabla + FM bass hits.
+2. Read handpan sample × trim × (muted/solo-aware) Level; pan.
+3. Read Support parts: resonator, waveshape, tambura, followers, root drone (wash blend and mute/solo already applied inside Support).
+4. Scale root drone × strip Level; followers × trim × Level; FM bass and tabla × trim × Level; echo taps × Level.
+5. Build reverb send bus from handpan + wash sends + followers + root + echo + tabla; mix wet × Reverb Level / mute / pan.
+6. Sum dry stereo pans + wet; publish per-strip peak meters.
 
-The degree comes from a longer memory than the bands: the last 16 strikes, weighted by strength, with old and new strikes counting the same. The winner has to stay the winner for four beats in a row before the bass moves. A beat for this vote is an accepted strike, or a swell that wraps because no strike came.
-
-One new note does not move the bass. A stretch of that note does, a few beats after it has become the note you are actually playing. Until then the bass stays on the ding, one octave down.
-
-## The taps
-
-A tap is a single short ring on a scale note. It is the same kind of resonator, struck once and left to decay (zeta 0.005, no continuing drive). It does not glide. It is there to fill a hole, and it stays quiet when the playing is already full.
-
-Taps start only after a beat exists. The main one is halfway through the beat. If the beat is longer than 0.7 seconds, a softer one can also land three quarters of the way through.
-
-A tap is allowed when the last strike was long enough ago to be a gap (more than 30% of a beat) and recent enough to still be part of the playing (under 2 seconds). It is held back when two or more strikes have landed in the last 0.85 of a beat, or when four or more strikes have landed in the last 0.6 seconds. A second tap will not start while the previous one is still in its first third of a second.
-
-The note is chosen from the same recent window as the color bands. It prefers the second most played degree, as long as that is not the note just struck. Otherwise it uses the most played degree, with the same condition. If both of those are the note just struck, it steps three pads up the scale.
-
-## How the mix is built
-
-Each sample is:
-
-1. The three bands, summed with the mix weights above, then multiplied by the swell.
-2. The bass, multiplied by its shallower swell.
-3. The tap, if one is ringing.
-
-That sum is multiplied by Support level and by the presence fade, then limited to the range −1 to 1. The bands are the body of the sound. The bass is quieter. The tap is a short accent and then it is gone.
-
-Until the first strike, presence is zero. The first three gaps turn the swell on. The bass waits for agreement before it leaves the ding. After a rest of about 2 seconds the swell stops, and the Fade control takes the tone away.
+Structural note (rain-check): this mix is still inlined in the app callback. Before the next new desk channel (or if mixer wiring bugs keep stacking), extract a `DeskMix` / frame helper and table-drive strip descriptors so `DeskModule` / `MixChannel` / ParameterIds stay aligned. Until then, prefer polish on the current desk rather than a large rewrite. Flexible lead/support voices, future inserts, external control, and desktop→embedded presets all argue for that same tidy when growth hits — not for stopping polish now.

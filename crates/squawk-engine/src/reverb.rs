@@ -17,6 +17,7 @@ pub const DEFAULT_REVERB_SECOND: f32 = DEFAULT_REVERB_SUPPORT;
 pub const DEFAULT_REVERB_BASS: f32 = DEFAULT_REVERB_SUPPORT;
 pub const DEFAULT_REVERB_ECHO: f32 = DEFAULT_REVERB_SUPPORT;
 pub const DEFAULT_REVERB_TABLA: f32 = DEFAULT_REVERB_SUPPORT;
+pub const DEFAULT_REVERB_FM_BASS: f32 = DEFAULT_REVERB_SUPPORT;
 pub const DEFAULT_REVERB_DECAY: f32 = 2.2;
 pub const DEFAULT_REVERB_TONE: f32 = 0.35;
 pub const REVERB_HANDPAN_RANGE: (f32, f32) = (0.0, 1.0);
@@ -30,6 +31,7 @@ pub const REVERB_SECOND_RANGE: (f32, f32) = REVERB_SUPPORT_RANGE;
 pub const REVERB_BASS_RANGE: (f32, f32) = REVERB_SUPPORT_RANGE;
 pub const REVERB_ECHO_RANGE: (f32, f32) = REVERB_SUPPORT_RANGE;
 pub const REVERB_TABLA_RANGE: (f32, f32) = REVERB_SUPPORT_RANGE;
+pub const REVERB_FM_BASS_RANGE: (f32, f32) = REVERB_SUPPORT_RANGE;
 pub const REVERB_DECAY_RANGE: (f32, f32) = (0.5, 6.0);
 pub const REVERB_TONE_RANGE: (f32, f32) = (0.0, 1.0);
 
@@ -143,6 +145,8 @@ pub struct Reverb {
     echo_target: f32,
     tabla_send: f32,
     tabla_target: f32,
+    fm_bass_send: f32,
+    fm_bass_target: f32,
     decay: f32,
     decay_target: f32,
     tone: f32,
@@ -188,6 +192,8 @@ impl Reverb {
             echo_target: DEFAULT_REVERB_ECHO,
             tabla_send: DEFAULT_REVERB_TABLA,
             tabla_target: DEFAULT_REVERB_TABLA,
+            fm_bass_send: DEFAULT_REVERB_FM_BASS,
+            fm_bass_target: DEFAULT_REVERB_FM_BASS,
             decay: DEFAULT_REVERB_DECAY,
             decay_target: DEFAULT_REVERB_DECAY,
             tone: DEFAULT_REVERB_TONE,
@@ -225,6 +231,10 @@ impl Reverb {
         self.tabla_target = send.clamp(REVERB_TABLA_RANGE.0, REVERB_TABLA_RANGE.1);
     }
 
+    pub fn set_fm_bass_send(&mut self, send: f32) {
+        self.fm_bass_target = send.clamp(REVERB_FM_BASS_RANGE.0, REVERB_FM_BASS_RANGE.1);
+    }
+
     pub fn set_decay(&mut self, seconds: f32) {
         self.decay_target = seconds.clamp(REVERB_DECAY_RANGE.0, REVERB_DECAY_RANGE.1);
     }
@@ -244,6 +254,7 @@ impl Reverb {
         bass: f32,
         echo: f32,
         tabla: f32,
+        fm_bass: f32,
     ) -> (f32, f32) {
         ease(&mut self.handpan_send, self.handpan_target, self.smooth);
         ease(&mut self.ding_send, self.ding_target, self.smooth);
@@ -252,6 +263,7 @@ impl Reverb {
         ease(&mut self.bass_send, self.bass_target, self.smooth);
         ease(&mut self.echo_send, self.echo_target, self.smooth);
         ease(&mut self.tabla_send, self.tabla_target, self.smooth);
+        ease(&mut self.fm_bass_send, self.fm_bass_target, self.smooth);
         ease(&mut self.decay, self.decay_target, self.smooth);
         ease(&mut self.tone, self.tone_target, self.smooth);
         self.update_tone_and_gain();
@@ -263,7 +275,8 @@ impl Reverb {
                 + second * self.second_send
                 + bass * self.bass_send
                 + echo * self.echo_send
-                + tabla * self.tabla_send,
+                + tabla * self.tabla_send
+                + fm_bass * self.fm_bass_send,
         );
         let mut diffused = input;
         for allpass in &mut self.diffuse {
@@ -376,17 +389,18 @@ mod tests {
     fn settle(reverb: &mut Reverb) {
         let samples = (RATE * 0.25) as usize;
         for _ in 0..samples {
-            reverb.next_wet(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+            reverb.next_wet(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         }
     }
 
-    fn impulse(reverb: &mut Reverb, inputs: [f32; 7], seconds: f32) -> Vec<(f32, f32)> {
+    fn impulse(reverb: &mut Reverb, inputs: [f32; 8], seconds: f32) -> Vec<(f32, f32)> {
         let mut frames = Vec::with_capacity((RATE * seconds) as usize + 1);
         frames.push(reverb.next_wet(
             inputs[0], inputs[1], inputs[2], inputs[3], inputs[4], inputs[5], inputs[6],
+            inputs[7],
         ));
         for _ in 1..(RATE * seconds) as usize {
-            frames.push(reverb.next_wet(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
+            frames.push(reverb.next_wet(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
         }
         frames
     }
@@ -402,7 +416,7 @@ mod tests {
     fn silent_sends_leave_no_wet() {
         let mut reverb = Reverb::new(RATE);
         for _ in 0..(RATE as usize / 10) {
-            let (left, right) = reverb.next_wet(0.8, -0.6, 0.4, -0.3, 0.5, 0.7, 0.2);
+            let (left, right) = reverb.next_wet(0.8, -0.6, 0.4, -0.3, 0.5, 0.7, 0.2, 0.0);
             assert_eq!(left, 0.0);
             assert_eq!(right, 0.0);
         }
@@ -413,7 +427,7 @@ mod tests {
         let mut handpan = Reverb::new(RATE);
         handpan.set_handpan_send(1.0);
         settle(&mut handpan);
-        let ignored = energy(&impulse(&mut handpan, [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], 0.4));
+        let ignored = energy(&impulse(&mut handpan, [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0], 0.4));
         assert!(
             ignored < 1.0e-8,
             "accompaniment leaked into the handpan send: {ignored}"
@@ -422,7 +436,7 @@ mod tests {
         let mut handpan = Reverb::new(RATE);
         handpan.set_handpan_send(1.0);
         settle(&mut handpan);
-        let heard = impulse(&mut handpan, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 0.5);
+        let heard = impulse(&mut handpan, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 0.5);
         let heard_energy = energy(&heard);
         assert!(heard_energy > 0.008, "handpan send produced {heard_energy}");
         let peak = heard.iter().fold(0.0_f32, |peak, (left, right)| {
@@ -453,7 +467,7 @@ mod tests {
                 _ => part.set_tabla_send(1.0),
             }
             settle(&mut part);
-            let ignored = energy(&impulse(&mut part, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 0.4));
+            let ignored = energy(&impulse(&mut part, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 0.4));
             assert!(
                 ignored < 1.0e-8,
                 "handpan leaked into the {name} send: {ignored}"
@@ -469,7 +483,7 @@ mod tests {
                 _ => part.set_tabla_send(1.0),
             }
             settle(&mut part);
-            let mut inputs = [0.0; 7];
+            let mut inputs = [0.0; 8];
             inputs[which + 1] = 1.0;
             let heard = energy(&impulse(&mut part, inputs, 0.5));
             assert!(heard > 0.008, "{name} send produced {heard}");
@@ -483,7 +497,7 @@ mod tests {
         reverb.set_decay(REVERB_DECAY_RANGE.1);
         reverb.set_tone(REVERB_TONE_RANGE.1);
         settle(&mut reverb);
-        let frames = impulse(&mut reverb, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 3.0);
+        let frames = impulse(&mut reverb, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 3.0);
         assert!(
             frames
                 .iter()
@@ -510,7 +524,7 @@ mod tests {
             reverb.set_decay(decay);
             reverb.set_tone(tone);
             settle(&mut reverb);
-            let frames = impulse(&mut reverb, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 1.0);
+            let frames = impulse(&mut reverb, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 1.0);
             let start = (RATE * 0.04) as usize;
             let tail: Vec<f32> = frames[start..]
                 .iter()

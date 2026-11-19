@@ -344,9 +344,15 @@ impl SquawkApp {
         };
         let accompanying = Instrument::from_u8(self.control.instrument()) == Instrument::Handpan;
         if accompanying {
-            ui.label(format!(
-                "{name} into the Handpan pad mix. Level / Mute / Solo / Send are on this strip; blend with the other washes freely."
-            ));
+            if kind == 0 || kind == 1 {
+                ui.label(format!(
+                    "{name} into the Handpan pad mix. It ducks under each strike and blooms after a short gap so it fills space instead of attacking with the handpan. Level / Mute / Solo / Send are on this strip."
+                ));
+            } else {
+                ui.label(format!(
+                    "{name} into the Handpan pad mix. Level / Mute / Solo / Send are on this strip; blend with the other washes freely."
+                ));
+            }
         } else {
             ui.label(format!(
                 "Play pads to hold a {name} tone and tune it. Shared scale / ding with Handpan. Level also feeds this wash under Handpan."
@@ -361,6 +367,18 @@ impl SquawkApp {
         ui.label("Trim (before mixer)");
         self.draw_parameter(ui, trim, true);
         ui.add_space(8.0);
+        if kind == 0 || kind == 1 {
+            let register = if kind == 0 {
+                ParameterId::ResonatorRegister
+            } else {
+                ParameterId::WaveshapeRegister
+            };
+            ui.label("Register");
+            ui.label("Unison, octave down, fifth, or octave + fifth for deeper / harmony pads.");
+            ui.add_space(4.0);
+            self.draw_parameter(ui, register, true);
+            ui.add_space(8.0);
+        }
         // Resonator ignores Shape/Spread/Brightness — only show knobs that affect the voice.
         let voice_params: &[ParameterId] = match kind {
             2 => ParameterId::tambura(),
@@ -2357,7 +2375,7 @@ impl DeskModule {
             DeskModule::Tambura => Some(ParameterId::ReverbTambura),
             DeskModule::Followers => Some(ParameterId::ReverbFollowers),
             DeskModule::RootDrone => Some(ParameterId::ReverbBass),
-            DeskModule::Bass => None,
+            DeskModule::Bass => Some(ParameterId::ReverbFmBass),
             DeskModule::TablaLine => Some(ParameterId::ReverbTabla),
             DeskModule::Echo => Some(ParameterId::ReverbEcho),
             DeskModule::Reverb

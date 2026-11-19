@@ -76,6 +76,8 @@ use squawk_engine::{
     DEFAULT_REVERB_ECHO as ENGINE_DEFAULT_REVERB_ECHO,
     DEFAULT_REVERB_FOLLOWERS as ENGINE_DEFAULT_REVERB_FOLLOWERS,
     DEFAULT_REVERB_TABLA as ENGINE_DEFAULT_REVERB_TABLA,
+    DEFAULT_REVERB_FM_BASS as ENGINE_DEFAULT_REVERB_FM_BASS,
+    DEFAULT_WASH_REGISTER as ENGINE_DEFAULT_WASH_REGISTER,
     DEFAULT_REVERB_TAMBURA as ENGINE_DEFAULT_REVERB_TAMBURA,
     DEFAULT_REVERB_HANDPAN as ENGINE_DEFAULT_REVERB_HANDPAN,
     DEFAULT_REVERB_RECENT as ENGINE_DEFAULT_REVERB_RECENT,
@@ -109,6 +111,7 @@ use squawk_engine::{
     MIX_LEVEL_RANGE, PAN_RANGE, PlayMemory, REVERB_BASS_RANGE, REVERB_DECAY_RANGE,
     REVERB_DING_RANGE, REVERB_ECHO_RANGE, REVERB_FOLLOWERS_RANGE, REVERB_HANDPAN_RANGE,
     REVERB_RECENT_RANGE, REVERB_TABLA_RANGE, REVERB_TAMBURA_RANGE, REVERB_WAVESHAPE_RANGE,
+    REVERB_FM_BASS_RANGE, WASH_REGISTER_RANGE, WASH_REGISTER_NAMES,
     REVERB_SECOND_RANGE, REVERB_SUPPORT_RANGE, REVERB_TONE_RANGE, Reverb, SUPPORT_DRIFT_RANGE,
     SUPPORT_FADE_RANGE, SUPPORT_LEVEL_RANGE, SUPPORT_MOTION_RANGE, SUPPORT_PULSE_RANGE,
     SUPPORT_TONE_RANGE, SUPPORT_WANDER_RANGE, SUPPORT_WIDTH_RANGE, TRIM_RANGE, StrikeVoice,
@@ -182,6 +185,8 @@ pub(crate) const DEFAULT_REVERB_SECOND: f32 = ENGINE_DEFAULT_REVERB_SECOND;
 pub(crate) const DEFAULT_REVERB_BASS: f32 = ENGINE_DEFAULT_REVERB_BASS;
 pub(crate) const DEFAULT_REVERB_ECHO: f32 = ENGINE_DEFAULT_REVERB_ECHO;
 pub(crate) const DEFAULT_REVERB_TABLA: f32 = ENGINE_DEFAULT_REVERB_TABLA;
+pub(crate) const DEFAULT_REVERB_FM_BASS: f32 = ENGINE_DEFAULT_REVERB_FM_BASS;
+pub(crate) const DEFAULT_WASH_REGISTER: f32 = ENGINE_DEFAULT_WASH_REGISTER as f32;
 pub(crate) const DEFAULT_REVERB_DECAY: f32 = ENGINE_DEFAULT_REVERB_DECAY;
 pub(crate) const DEFAULT_REVERB_TONE: f32 = ENGINE_DEFAULT_REVERB_TONE;
 pub(crate) const DEFAULT_DING_WASH: u8 = ENGINE_DEFAULT_DING_WASH;
@@ -390,6 +395,9 @@ struct ControlBlock {
     reverb_bass_bits: AtomicU32,
     reverb_echo_bits: AtomicU32,
     reverb_tabla_bits: AtomicU32,
+    reverb_fm_bass_bits: AtomicU32,
+    resonator_register_bits: AtomicU32,
+    waveshape_register_bits: AtomicU32,
     reverb_decay_bits: AtomicU32,
     reverb_tone_bits: AtomicU32,
     echo_instrument: AtomicU8,
@@ -553,6 +561,9 @@ impl ControlBlock {
             reverb_bass_bits: AtomicU32::new(DEFAULT_REVERB_BASS.to_bits()),
             reverb_echo_bits: AtomicU32::new(DEFAULT_REVERB_ECHO.to_bits()),
             reverb_tabla_bits: AtomicU32::new(DEFAULT_REVERB_TABLA.to_bits()),
+            reverb_fm_bass_bits: AtomicU32::new(DEFAULT_REVERB_FM_BASS.to_bits()),
+            resonator_register_bits: AtomicU32::new(DEFAULT_WASH_REGISTER.to_bits()),
+            waveshape_register_bits: AtomicU32::new(DEFAULT_WASH_REGISTER.to_bits()),
             reverb_decay_bits: AtomicU32::new(DEFAULT_REVERB_DECAY.to_bits()),
             reverb_tone_bits: AtomicU32::new(DEFAULT_REVERB_TONE.to_bits()),
             echo_instrument: AtomicU8::new(DEFAULT_ECHO_INSTRUMENT),
@@ -738,6 +749,9 @@ impl ControlBlock {
             reverb_bass: f32::from_bits(self.reverb_bass_bits.load(Ordering::Relaxed)),
             reverb_echo: f32::from_bits(self.reverb_echo_bits.load(Ordering::Relaxed)),
             reverb_tabla: f32::from_bits(self.reverb_tabla_bits.load(Ordering::Relaxed)),
+            reverb_fm_bass: f32::from_bits(self.reverb_fm_bass_bits.load(Ordering::Relaxed)),
+            resonator_register: f32::from_bits(self.resonator_register_bits.load(Ordering::Relaxed)),
+            waveshape_register: f32::from_bits(self.waveshape_register_bits.load(Ordering::Relaxed)),
             reverb_decay: f32::from_bits(self.reverb_decay_bits.load(Ordering::Relaxed)),
             reverb_tone: f32::from_bits(self.reverb_tone_bits.load(Ordering::Relaxed)),
             echo_instrument: self.echo_instrument.load(Ordering::Relaxed),
@@ -1594,6 +1608,15 @@ impl ControlBlock {
             ParameterId::TrimEcho => {
                 f32::from_bits(self.trim_echo_bits.load(Ordering::Relaxed))
             }
+            ParameterId::ReverbFmBass => {
+                f32::from_bits(self.reverb_fm_bass_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::ResonatorRegister => {
+                f32::from_bits(self.resonator_register_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::WaveshapeRegister => {
+                f32::from_bits(self.waveshape_register_bits.load(Ordering::Relaxed))
+            }
         }
     }
 
@@ -1917,6 +1940,15 @@ impl ControlBlock {
             ParameterId::TrimEcho => self
                 .trim_echo_bits
                 .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::ReverbFmBass => self
+                .reverb_fm_bass_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::ResonatorRegister => self
+                .resonator_register_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::WaveshapeRegister => self
+                .waveshape_register_bits
+                .store(value.to_bits(), Ordering::Relaxed),
         }
     }
 
@@ -2069,6 +2101,9 @@ impl ControlBlock {
         self.set_parameter_value(ParameterId::TrimFmBass, DEFAULT_TRIM);
         self.set_parameter_value(ParameterId::TrimTabla, DEFAULT_TRIM);
         self.set_parameter_value(ParameterId::TrimEcho, DEFAULT_TRIM);
+        self.set_parameter_value(ParameterId::ReverbFmBass, DEFAULT_REVERB_FM_BASS);
+        self.set_parameter_value(ParameterId::ResonatorRegister, DEFAULT_WASH_REGISTER);
+        self.set_parameter_value(ParameterId::WaveshapeRegister, DEFAULT_WASH_REGISTER);
         self.set_groove_click_enabled(DEFAULT_GROOVE_CLICK_ENABLED);
         self.set_groove_auto_lock(DEFAULT_GROOVE_AUTO_LOCK);
         self.request_groove_unlock();
@@ -2155,6 +2190,9 @@ struct ControlSnapshot {
     reverb_bass: f32,
     reverb_echo: f32,
     reverb_tabla: f32,
+    reverb_fm_bass: f32,
+    resonator_register: f32,
+    waveshape_register: f32,
     reverb_decay: f32,
     reverb_tone: f32,
     echo_instrument: u8,
@@ -2370,6 +2408,9 @@ pub enum ParameterId {
     TrimFmBass,
     TrimTabla,
     TrimEcho,
+    ReverbFmBass,
+    ResonatorRegister,
+    WaveshapeRegister,
 }
 
 const MODAL_PARAMETERS: [ParameterId; 12] = [
@@ -2590,6 +2631,9 @@ impl ParameterId {
             ParameterId::TrimFmBass => 118,
             ParameterId::TrimTabla => 119,
             ParameterId::TrimEcho => 120,
+            ParameterId::ReverbFmBass => 121,
+            ParameterId::ResonatorRegister => 122,
+            ParameterId::WaveshapeRegister => 123,
         }
     }
 
@@ -2716,6 +2760,9 @@ impl ParameterId {
             118 => Some(ParameterId::TrimFmBass),
             119 => Some(ParameterId::TrimTabla),
             120 => Some(ParameterId::TrimEcho),
+            121 => Some(ParameterId::ReverbFmBass),
+            122 => Some(ParameterId::ResonatorRegister),
+            123 => Some(ParameterId::WaveshapeRegister),
             _ => None,
         }
     }
@@ -2895,6 +2942,9 @@ impl ParameterId {
             ParameterId::TrimFmBass => "Trim",
             ParameterId::TrimTabla => "Trim",
             ParameterId::TrimEcho => "Trim",
+            ParameterId::ReverbFmBass => "Bass send",
+            ParameterId::ResonatorRegister => "Register",
+            ParameterId::WaveshapeRegister => "Register",
         }
     }
 
@@ -3021,13 +3071,19 @@ impl ParameterId {
             ParameterId::TrimFmBass => TRIM_RANGE,
             ParameterId::TrimTabla => TRIM_RANGE,
             ParameterId::TrimEcho => TRIM_RANGE,
+            ParameterId::ReverbFmBass => REVERB_FM_BASS_RANGE,
+            ParameterId::ResonatorRegister => WASH_REGISTER_RANGE,
+            ParameterId::WaveshapeRegister => WASH_REGISTER_RANGE,
         }
     }
 
     fn clamp(self, value: f32) -> f32 {
         let (min, max) = self.range();
         let value = match self {
-            ParameterId::TablaBayanTune | ParameterId::TablaDayanTune => value.round(),
+            ParameterId::TablaBayanTune
+            | ParameterId::TablaDayanTune
+            | ParameterId::ResonatorRegister
+            | ParameterId::WaveshapeRegister => value.round(),
             _ => value,
         };
         value.clamp(min, max)
@@ -3097,7 +3153,13 @@ impl ParameterId {
             | ParameterId::ReverbSecond
             | ParameterId::ReverbBass
             | ParameterId::ReverbEcho
-            | ParameterId::ReverbTabla => format!("{value:.2}"),
+            | ParameterId::ReverbTabla
+            | ParameterId::ReverbFmBass => format!("{value:.2}"),
+            ParameterId::ResonatorRegister | ParameterId::WaveshapeRegister => WASH_REGISTER_NAMES
+                .get(value.round() as usize)
+                .copied()
+                .unwrap_or("Unison")
+                .to_string(),
             ParameterId::ReverbDecay => format!("{value:.1} s"),
             ParameterId::ReverbTone => format!("{value:.2}"),
             ParameterId::DingShape => format!("{value:.2}"),
@@ -3312,6 +3374,9 @@ impl ParameterId {
             ParameterId::TrimFmBass => "trim_fm_bass",
             ParameterId::TrimTabla => "trim_tabla",
             ParameterId::TrimEcho => "trim_echo",
+            ParameterId::ReverbFmBass => "reverb_fm_bass",
+            ParameterId::ResonatorRegister => "resonator_register",
+            ParameterId::WaveshapeRegister => "waveshape_register",
         }
     }
 
@@ -3438,6 +3503,9 @@ impl ParameterId {
             "trim_fm_bass" => Some(ParameterId::TrimFmBass),
             "trim_tabla" => Some(ParameterId::TrimTabla),
             "trim_echo" => Some(ParameterId::TrimEcho),
+            "reverb_fm_bass" => Some(ParameterId::ReverbFmBass),
+            "resonator_register" => Some(ParameterId::ResonatorRegister),
+            "waveshape_register" => Some(ParameterId::WaveshapeRegister),
             _ => None,
         }
     }
@@ -3713,6 +3781,9 @@ fn main() -> anyhow::Result<()> {
     control.set_parameter_value(ParameterId::ReverbBass, snapshot.reverb_bass);
     control.set_parameter_value(ParameterId::ReverbEcho, snapshot.reverb_echo);
     control.set_parameter_value(ParameterId::ReverbTabla, snapshot.reverb_tabla);
+    control.set_parameter_value(ParameterId::ReverbFmBass, snapshot.reverb_fm_bass);
+    control.set_parameter_value(ParameterId::ResonatorRegister, snapshot.resonator_register);
+    control.set_parameter_value(ParameterId::WaveshapeRegister, snapshot.waveshape_register);
     control.set_parameter_value(ParameterId::ReverbDecay, snapshot.reverb_decay);
     control.set_parameter_value(ParameterId::ReverbTone, snapshot.reverb_tone);
     control.set_echo_instrument_u8(snapshot.echo_instrument);
@@ -4206,10 +4277,14 @@ where
                     support.set_ding_formant_q(2, snapshot.ding_q_3);
                     support.set_formant_rate(snapshot.formant_rate);
                     support.set_formant_depth(snapshot.formant_depth);
-                    // Instrument trim into the pad voices; mixer strip levels apply after.
-                    support.set_wash_level(0, snapshot.trim_ding);
-                    support.set_wash_level(1, snapshot.trim_waveshape);
-                    support.set_wash_level(2, snapshot.trim_tambura);
+                    // Trim × strip Level feed wash_level so each fader changes that
+                    // voice's contribution to the shared formant bus (not a post gain
+                    // on three copies of the same coloured signal).
+                    support.set_wash_level(0, snapshot.trim_ding * snapshot.mix_ding);
+                    support.set_wash_level(1, snapshot.trim_waveshape * snapshot.mix_waveshape);
+                    support.set_wash_level(2, snapshot.trim_tambura * snapshot.mix_tambura);
+                    support.set_resonator_register(snapshot.resonator_register.round() as u8);
+                    support.set_waveshape_register(snapshot.waveshape_register.round() as u8);
                     support.set_part_level(0, DEFAULT_MIX_LEVEL);
                     support.set_part_level(1, snapshot.mix_recent);
                     support.set_part_level(2, snapshot.mix_second);
@@ -4229,6 +4304,7 @@ where
                     reverb.set_bass_send(snapshot.reverb_bass);
                     reverb.set_echo_send(snapshot.reverb_echo);
                     reverb.set_tabla_send(snapshot.reverb_tabla);
+                    reverb.set_fm_bass_send(snapshot.reverb_fm_bass);
                     reverb.set_decay(snapshot.reverb_decay);
                     reverb.set_tone(snapshot.reverb_tone);
                     groove.set_sensitivity(snapshot.groove_sensitivity);
@@ -4302,13 +4378,6 @@ where
                     let trim_followers = snapshot.trim_followers.clamp(TRIM_RANGE.0, TRIM_RANGE.1);
                     let trim_fm_bass = snapshot.trim_fm_bass.clamp(TRIM_RANGE.0, TRIM_RANGE.1);
                     let trim_tabla = snapshot.trim_tabla.clamp(TRIM_RANGE.0, TRIM_RANGE.1);
-                    let mix_ding = snapshot.mix_ding.clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
-                    let mix_waveshape = snapshot
-                        .mix_waveshape
-                        .clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
-                    let mix_tambura = snapshot
-                        .mix_tambura
-                        .clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
                     let mix_bass = snapshot.mix_bass.clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
                     let mix_taps = mix_taps_early;
                     let reverb_ding = snapshot
@@ -4403,9 +4472,9 @@ where
                             EchoInstrument::Handpan => 0.0,
                         };
                         let parts = support.next_parts().limited();
-                        let resonator = parts.resonator * mix_ding;
-                        let waveshape = parts.waveshape * mix_waveshape;
-                        let tambura = parts.tambura * mix_tambura;
+                        let resonator = parts.resonator;
+                        let waveshape = parts.waveshape;
+                        let tambura = parts.tambura;
                         let root_drone = parts.bass * mix_bass;
                         let (hand_l, hand_r) = stereo_pan(pan_handpan);
                         let (res_l, res_r) = stereo_pan(pan_ding);
@@ -4430,6 +4499,7 @@ where
                             root_drone,
                             echo_sig,
                             tabla_sig,
+                            line,
                         );
                         let wet_l = wet_l * reverb_level * rev_l;
                         let wet_r = wet_r * reverb_level * rev_r;

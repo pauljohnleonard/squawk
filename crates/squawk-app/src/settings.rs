@@ -145,6 +145,12 @@ struct StoredSettings {
     reverb_echo: f32,
     #[serde(default = "default_reverb_tabla")]
     reverb_tabla: f32,
+    #[serde(default = "default_reverb_fm_bass")]
+    reverb_fm_bass: f32,
+    #[serde(default = "default_wash_register")]
+    resonator_register: f32,
+    #[serde(default = "default_wash_register")]
+    waveshape_register: f32,
     #[serde(default = "default_reverb_decay")]
     reverb_decay: f32,
     #[serde(default = "default_reverb_tone")]
@@ -388,6 +394,9 @@ impl Default for StoredSettings {
             reverb_bass: Some(crate::DEFAULT_REVERB_BASS),
             reverb_echo: crate::DEFAULT_REVERB_ECHO,
             reverb_tabla: crate::DEFAULT_REVERB_TABLA,
+            reverb_fm_bass: crate::DEFAULT_REVERB_FM_BASS,
+            resonator_register: crate::DEFAULT_WASH_REGISTER,
+            waveshape_register: crate::DEFAULT_WASH_REGISTER,
             reverb_decay: crate::DEFAULT_REVERB_DECAY,
             reverb_tone: crate::DEFAULT_REVERB_TONE,
             echo_instrument: crate::DEFAULT_ECHO_INSTRUMENT,
@@ -534,6 +543,9 @@ pub(crate) struct SettingsSnapshot {
     pub reverb_bass: f32,
     pub reverb_echo: f32,
     pub reverb_tabla: f32,
+    pub reverb_fm_bass: f32,
+    pub resonator_register: f32,
+    pub waveshape_register: f32,
     pub reverb_decay: f32,
     pub reverb_tone: f32,
     pub echo_instrument: u8,
@@ -707,6 +719,9 @@ impl From<StoredSettings> for SettingsSnapshot {
                 .clamp(value.reverb_bass.unwrap_or(value.reverb_support)),
             reverb_echo: ParameterId::ReverbEcho.clamp(value.reverb_echo),
             reverb_tabla: ParameterId::ReverbTabla.clamp(value.reverb_tabla),
+            reverb_fm_bass: ParameterId::ReverbFmBass.clamp(value.reverb_fm_bass),
+            resonator_register: ParameterId::ResonatorRegister.clamp(value.resonator_register),
+            waveshape_register: ParameterId::WaveshapeRegister.clamp(value.waveshape_register),
             reverb_decay: ParameterId::ReverbDecay.clamp(value.reverb_decay),
             reverb_tone: ParameterId::ReverbTone.clamp(value.reverb_tone),
             echo_instrument: crate::EchoInstrument::from_u8(value.echo_instrument).as_u8(),
@@ -896,6 +911,9 @@ impl SettingsStore {
                 ParameterId::ReverbBass => data.reverb_bass = Some(clamped),
                 ParameterId::ReverbEcho => data.reverb_echo = clamped,
                 ParameterId::ReverbTabla => data.reverb_tabla = clamped,
+                ParameterId::ReverbFmBass => data.reverb_fm_bass = clamped,
+                ParameterId::ResonatorRegister => data.resonator_register = clamped,
+                ParameterId::WaveshapeRegister => data.waveshape_register = clamped,
                 ParameterId::ReverbDecay => data.reverb_decay = clamped,
                 ParameterId::ReverbTone => data.reverb_tone = clamped,
                 ParameterId::DingShape => data.ding_shape = clamped,
@@ -1226,6 +1244,9 @@ impl SettingsStore {
             data.reverb_bass = Some(crate::DEFAULT_REVERB_BASS);
             data.reverb_echo = crate::DEFAULT_REVERB_ECHO;
             data.reverb_tabla = crate::DEFAULT_REVERB_TABLA;
+            data.reverb_fm_bass = crate::DEFAULT_REVERB_FM_BASS;
+            data.resonator_register = crate::DEFAULT_WASH_REGISTER;
+            data.waveshape_register = crate::DEFAULT_WASH_REGISTER;
             data.reverb_decay = crate::DEFAULT_REVERB_DECAY;
             data.reverb_tone = crate::DEFAULT_REVERB_TONE;
             data.echo_instrument = crate::DEFAULT_ECHO_INSTRUMENT;
@@ -1526,6 +1547,14 @@ fn default_reverb_echo() -> f32 {
 
 fn default_reverb_tabla() -> f32 {
     crate::DEFAULT_REVERB_TABLA
+}
+
+fn default_reverb_fm_bass() -> f32 {
+    crate::DEFAULT_REVERB_FM_BASS
+}
+
+fn default_wash_register() -> f32 {
+    crate::DEFAULT_WASH_REGISTER
 }
 
 fn default_echo_instrument() -> u8 {
