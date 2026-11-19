@@ -120,6 +120,8 @@ struct StoredSettings {
     support_motion: f32,
     #[serde(default = "default_support_fade")]
     support_fade: f32,
+    #[serde(default = "default_support_tone")]
+    support_tone: f32,
     #[serde(default = "default_reverb_handpan")]
     reverb_handpan: f32,
     #[serde(default = "default_reverb_support")]
@@ -128,6 +130,12 @@ struct StoredSettings {
     #[serde(default)]
     reverb_ding: Option<f32>,
     #[serde(default)]
+    reverb_waveshape: Option<f32>,
+    #[serde(default)]
+    reverb_tambura: Option<f32>,
+    #[serde(default)]
+    reverb_followers: Option<f32>,
+    #[serde(default)]
     reverb_recent: Option<f32>,
     #[serde(default)]
     reverb_second: Option<f32>,
@@ -135,6 +143,8 @@ struct StoredSettings {
     reverb_bass: Option<f32>,
     #[serde(default = "default_reverb_echo")]
     reverb_echo: f32,
+    #[serde(default = "default_reverb_tabla")]
+    reverb_tabla: f32,
     #[serde(default = "default_reverb_decay")]
     reverb_decay: f32,
     #[serde(default = "default_reverb_tone")]
@@ -187,6 +197,8 @@ struct StoredSettings {
     #[serde(default = "default_mix_level")]
     mix_second: f32,
     #[serde(default = "default_mix_level")]
+    mix_followers: f32,
+    #[serde(default = "default_mix_level")]
     mix_bass: f32,
     #[serde(default = "default_mix_level")]
     mix_taps: f32,
@@ -212,9 +224,15 @@ struct StoredSettings {
     #[serde(default = "default_pan")]
     pan_second: f32,
     #[serde(default = "default_pan")]
+    pan_followers: f32,
+    #[serde(default = "default_pan")]
     pan_bass: f32,
     #[serde(default = "default_pan")]
+    pan_fm_bass: f32,
+    #[serde(default = "default_pan")]
     pan_echo: f32,
+    #[serde(default = "default_pan")]
+    pan_tabla: f32,
     #[serde(default = "default_pan")]
     pan_reverb: f32,
     #[serde(default = "default_formant_rate")]
@@ -243,6 +261,12 @@ struct StoredSettings {
     bass_line_amount: f32,
     #[serde(default = "default_bass_line_variation")]
     bass_line_variation: f32,
+    #[serde(default = "default_tabla_line_amount")]
+    tabla_line_amount: f32,
+    #[serde(default = "default_mix_level")]
+    mix_tabla: f32,
+    #[serde(default = "default_tabla_groove_index")]
+    tabla_groove_index: u8,
     #[serde(default = "default_bells_decay")]
     bells_decay: f32,
     #[serde(default = "default_bells_ratio")]
@@ -251,6 +275,36 @@ struct StoredSettings {
     bells_index: f32,
     #[serde(default = "default_bells_index_decay")]
     bells_index_decay: f32,
+    #[serde(default = "default_tabla_row_decay")]
+    tabla_row_decay: [f32; 3],
+    #[serde(default = "default_tabla_row_tone")]
+    tabla_row_tone: [f32; 3],
+    #[serde(default = "default_tabla_row_noise")]
+    tabla_row_noise: [f32; 3],
+    #[serde(default = "default_tabla_glide")]
+    tabla_glide: f32,
+    #[serde(default = "default_tabla_bayan_tune")]
+    tabla_bayan_tune: f32,
+    #[serde(default = "default_tabla_dayan_tune")]
+    tabla_dayan_tune: f32,
+    #[serde(default = "default_trim")]
+    trim_handpan: f32,
+    #[serde(default = "default_trim")]
+    trim_ding: f32,
+    #[serde(default = "default_trim")]
+    trim_waveshape: f32,
+    #[serde(default = "default_trim")]
+    trim_tambura: f32,
+    #[serde(default = "default_trim")]
+    trim_root: f32,
+    #[serde(default = "default_trim")]
+    trim_followers: f32,
+    #[serde(default = "default_trim")]
+    trim_fm_bass: f32,
+    #[serde(default = "default_trim")]
+    trim_tabla: f32,
+    #[serde(default = "default_trim")]
+    trim_echo: f32,
     #[serde(default)]
     fm_bass_presets: HashMap<String, StoredFmBassPreset>,
     #[serde(default = "default_groove_click_enabled")]
@@ -269,6 +323,14 @@ struct StoredSettings {
     handpan_muted: bool,
     #[serde(default)]
     handpan_solo: bool,
+    #[serde(default)]
+    bass_muted: bool,
+    #[serde(default)]
+    bass_solo: bool,
+    #[serde(default)]
+    tabla_muted: bool,
+    #[serde(default)]
+    tabla_solo: bool,
     #[serde(default)]
     reverb_muted: bool,
     #[serde(default)]
@@ -314,13 +376,18 @@ impl Default for StoredSettings {
             support_drift: crate::DEFAULT_SUPPORT_DRIFT,
             support_motion: crate::DEFAULT_SUPPORT_MOTION,
             support_fade: crate::DEFAULT_SUPPORT_FADE,
+            support_tone: crate::DEFAULT_SUPPORT_TONE,
             reverb_handpan: crate::DEFAULT_REVERB_HANDPAN,
             reverb_support: crate::DEFAULT_REVERB_SUPPORT,
             reverb_ding: Some(crate::DEFAULT_REVERB_DING),
+            reverb_waveshape: Some(crate::DEFAULT_REVERB_WAVESHAPE),
+            reverb_tambura: Some(crate::DEFAULT_REVERB_TAMBURA),
+            reverb_followers: Some(crate::DEFAULT_REVERB_FOLLOWERS),
             reverb_recent: Some(crate::DEFAULT_REVERB_RECENT),
             reverb_second: Some(crate::DEFAULT_REVERB_SECOND),
             reverb_bass: Some(crate::DEFAULT_REVERB_BASS),
             reverb_echo: crate::DEFAULT_REVERB_ECHO,
+            reverb_tabla: crate::DEFAULT_REVERB_TABLA,
             reverb_decay: crate::DEFAULT_REVERB_DECAY,
             reverb_tone: crate::DEFAULT_REVERB_TONE,
             echo_instrument: crate::DEFAULT_ECHO_INSTRUMENT,
@@ -346,6 +413,7 @@ impl Default for StoredSettings {
             mix_tambura: Some(0.0),
             mix_recent: crate::DEFAULT_MIX_LEVEL,
             mix_second: crate::DEFAULT_MIX_LEVEL,
+            mix_followers: crate::DEFAULT_MIX_LEVEL,
             mix_bass: crate::DEFAULT_MIX_LEVEL,
             mix_taps: crate::DEFAULT_MIX_LEVEL,
             mix_reverb: crate::DEFAULT_MIX_LEVEL,
@@ -358,8 +426,11 @@ impl Default for StoredSettings {
             pan_tambura: crate::DEFAULT_PAN,
             pan_recent: crate::DEFAULT_PAN,
             pan_second: crate::DEFAULT_PAN,
+            pan_followers: crate::DEFAULT_PAN,
             pan_bass: crate::DEFAULT_PAN,
+            pan_fm_bass: crate::DEFAULT_PAN,
             pan_echo: crate::DEFAULT_PAN,
+            pan_tabla: crate::DEFAULT_PAN,
             pan_reverb: crate::DEFAULT_PAN,
             formant_rate: crate::DEFAULT_FORMANT_RATE,
             formant_depth: crate::DEFAULT_FORMANT_DEPTH,
@@ -374,10 +445,28 @@ impl Default for StoredSettings {
             fm_bass_level: crate::DEFAULT_FM_BASS_LEVEL,
             bass_line_amount: crate::DEFAULT_BASS_LINE_AMOUNT,
             bass_line_variation: crate::DEFAULT_BASS_LINE_VARIATION,
+            tabla_line_amount: crate::DEFAULT_TABLA_LINE_AMOUNT,
+            mix_tabla: crate::DEFAULT_MIX_LEVEL,
+            tabla_groove_index: crate::DEFAULT_TABLA_GROOVE_INDEX,
             bells_decay: crate::DEFAULT_BELLS_DECAY,
             bells_ratio: crate::DEFAULT_BELLS_RATIO,
             bells_index: crate::DEFAULT_BELLS_INDEX,
             bells_index_decay: crate::DEFAULT_BELLS_INDEX_DECAY,
+            tabla_row_decay: crate::DEFAULT_TABLA_ROW_DECAY,
+            tabla_row_tone: crate::DEFAULT_TABLA_ROW_TONE,
+            tabla_row_noise: crate::DEFAULT_TABLA_ROW_NOISE,
+            tabla_glide: crate::DEFAULT_TABLA_GLIDE,
+            tabla_bayan_tune: crate::DEFAULT_TABLA_BAYAN_TUNE,
+            tabla_dayan_tune: crate::DEFAULT_TABLA_DAYAN_TUNE,
+            trim_handpan: crate::DEFAULT_TRIM,
+            trim_ding: crate::DEFAULT_TRIM,
+            trim_waveshape: crate::DEFAULT_TRIM,
+            trim_tambura: crate::DEFAULT_TRIM,
+            trim_root: crate::DEFAULT_TRIM,
+            trim_followers: crate::DEFAULT_TRIM,
+            trim_fm_bass: crate::DEFAULT_TRIM,
+            trim_tabla: crate::DEFAULT_TRIM,
+            trim_echo: crate::DEFAULT_TRIM,
             fm_bass_presets: HashMap::new(),
             groove_click_enabled: crate::DEFAULT_GROOVE_CLICK_ENABLED,
             groove_auto_lock: crate::DEFAULT_GROOVE_AUTO_LOCK,
@@ -387,6 +476,10 @@ impl Default for StoredSettings {
             wash_solo: 0,
             handpan_muted: false,
             handpan_solo: false,
+            bass_muted: false,
+            bass_solo: false,
+            tabla_muted: false,
+            tabla_solo: false,
             reverb_muted: false,
             reverb_solo: false,
             keyboard_rows_set_place: default_keyboard_rows_set_place(),
@@ -429,13 +522,18 @@ pub(crate) struct SettingsSnapshot {
     pub support_drift: f32,
     pub support_motion: f32,
     pub support_fade: f32,
+    pub support_tone: f32,
     pub reverb_handpan: f32,
     pub reverb_support: f32,
     pub reverb_ding: f32,
+    pub reverb_waveshape: f32,
+    pub reverb_tambura: f32,
+    pub reverb_followers: f32,
     pub reverb_recent: f32,
     pub reverb_second: f32,
     pub reverb_bass: f32,
     pub reverb_echo: f32,
+    pub reverb_tabla: f32,
     pub reverb_decay: f32,
     pub reverb_tone: f32,
     pub echo_instrument: u8,
@@ -461,6 +559,7 @@ pub(crate) struct SettingsSnapshot {
     pub mix_tambura: f32,
     pub mix_recent: f32,
     pub mix_second: f32,
+    pub mix_followers: f32,
     pub mix_bass: f32,
     pub mix_taps: f32,
     pub mix_reverb: f32,
@@ -472,8 +571,11 @@ pub(crate) struct SettingsSnapshot {
     pub pan_tambura: f32,
     pub pan_recent: f32,
     pub pan_second: f32,
+    pub pan_followers: f32,
     pub pan_bass: f32,
+    pub pan_fm_bass: f32,
     pub pan_echo: f32,
+    pub pan_tabla: f32,
     pub pan_reverb: f32,
     pub formant_rate: f32,
     pub formant_depth: f32,
@@ -488,10 +590,28 @@ pub(crate) struct SettingsSnapshot {
     pub fm_bass_level: f32,
     pub bass_line_amount: f32,
     pub bass_line_variation: f32,
+    pub tabla_line_amount: f32,
+    pub mix_tabla: f32,
+    pub tabla_groove_index: u8,
     pub bells_decay: f32,
     pub bells_ratio: f32,
     pub bells_index: f32,
     pub bells_index_decay: f32,
+    pub tabla_row_decay: [f32; 3],
+    pub tabla_row_tone: [f32; 3],
+    pub tabla_row_noise: [f32; 3],
+    pub tabla_glide: f32,
+    pub tabla_bayan_tune: f32,
+    pub tabla_dayan_tune: f32,
+    pub trim_handpan: f32,
+    pub trim_ding: f32,
+    pub trim_waveshape: f32,
+    pub trim_tambura: f32,
+    pub trim_root: f32,
+    pub trim_followers: f32,
+    pub trim_fm_bass: f32,
+    pub trim_tabla: f32,
+    pub trim_echo: f32,
     pub groove_click_enabled: bool,
     pub groove_auto_lock: bool,
     pub support_muted: u8,
@@ -500,6 +620,10 @@ pub(crate) struct SettingsSnapshot {
     pub wash_solo: u8,
     pub handpan_muted: bool,
     pub handpan_solo: bool,
+    pub bass_muted: bool,
+    pub bass_solo: bool,
+    pub tabla_muted: bool,
+    pub tabla_solo: bool,
     pub reverb_muted: bool,
     pub reverb_solo: bool,
     pub keyboard_rows_set_place: bool,
@@ -564,10 +688,17 @@ impl From<StoredSettings> for SettingsSnapshot {
             support_drift: ParameterId::SupportDrift.clamp(value.support_drift),
             support_motion: ParameterId::SupportMotion.clamp(value.support_motion),
             support_fade: ParameterId::SupportFade.clamp(value.support_fade),
+            support_tone: ParameterId::SupportTone.clamp(value.support_tone),
             reverb_handpan: ParameterId::ReverbHandpan.clamp(value.reverb_handpan),
             reverb_support: ParameterId::ReverbSupport.clamp(value.reverb_support),
             reverb_ding: ParameterId::ReverbDing
                 .clamp(value.reverb_ding.unwrap_or(value.reverb_support)),
+            reverb_waveshape: ParameterId::ReverbWaveshape
+                .clamp(value.reverb_waveshape.unwrap_or(value.reverb_support)),
+            reverb_tambura: ParameterId::ReverbTambura
+                .clamp(value.reverb_tambura.unwrap_or(value.reverb_support)),
+            reverb_followers: ParameterId::ReverbFollowers
+                .clamp(value.reverb_followers.unwrap_or(value.reverb_support)),
             reverb_recent: ParameterId::ReverbRecent
                 .clamp(value.reverb_recent.unwrap_or(value.reverb_support)),
             reverb_second: ParameterId::ReverbSecond
@@ -575,6 +706,7 @@ impl From<StoredSettings> for SettingsSnapshot {
             reverb_bass: ParameterId::ReverbBass
                 .clamp(value.reverb_bass.unwrap_or(value.reverb_support)),
             reverb_echo: ParameterId::ReverbEcho.clamp(value.reverb_echo),
+            reverb_tabla: ParameterId::ReverbTabla.clamp(value.reverb_tabla),
             reverb_decay: ParameterId::ReverbDecay.clamp(value.reverb_decay),
             reverb_tone: ParameterId::ReverbTone.clamp(value.reverb_tone),
             echo_instrument: crate::EchoInstrument::from_u8(value.echo_instrument).as_u8(),
@@ -600,6 +732,7 @@ impl From<StoredSettings> for SettingsSnapshot {
             mix_tambura: ParameterId::MixTambura.clamp(migrated.2),
             mix_recent: ParameterId::MixRecent.clamp(value.mix_recent),
             mix_second: ParameterId::MixSecond.clamp(value.mix_second),
+            mix_followers: ParameterId::MixFollowers.clamp(value.mix_followers),
             mix_bass: ParameterId::MixBass.clamp(value.mix_bass),
             mix_taps: ParameterId::MixTaps.clamp(value.mix_taps),
             mix_reverb: ParameterId::MixReverb.clamp(value.mix_reverb),
@@ -612,8 +745,11 @@ impl From<StoredSettings> for SettingsSnapshot {
             pan_tambura: ParameterId::PanTambura.clamp(value.pan_tambura),
             pan_recent: ParameterId::PanRecent.clamp(value.pan_recent),
             pan_second: ParameterId::PanSecond.clamp(value.pan_second),
+            pan_followers: ParameterId::PanFollowers.clamp(value.pan_followers),
             pan_bass: ParameterId::PanBass.clamp(value.pan_bass),
+            pan_fm_bass: ParameterId::PanFmBass.clamp(value.pan_fm_bass),
             pan_echo: ParameterId::PanEcho.clamp(value.pan_echo),
+            pan_tabla: ParameterId::PanTabla.clamp(value.pan_tabla),
             pan_reverb: ParameterId::PanReverb.clamp(value.pan_reverb),
             formant_rate: ParameterId::FormantRate.clamp(value.formant_rate),
             formant_depth: ParameterId::FormantDepth.clamp(value.formant_depth),
@@ -628,10 +764,43 @@ impl From<StoredSettings> for SettingsSnapshot {
             fm_bass_level: ParameterId::FmBassLevel.clamp(value.fm_bass_level),
             bass_line_amount: ParameterId::BassLineAmount.clamp(value.bass_line_amount),
             bass_line_variation: ParameterId::BassLineVariation.clamp(value.bass_line_variation),
+            tabla_line_amount: ParameterId::TablaLineAmount.clamp(value.tabla_line_amount),
+            mix_tabla: ParameterId::MixTabla.clamp(value.mix_tabla),
+            tabla_groove_index: {
+                let max = (squawk_engine::GROOVES.len().saturating_sub(1)) as u8;
+                value.tabla_groove_index.min(max)
+            },
             bells_decay: ParameterId::BellsDecay.clamp(value.bells_decay),
             bells_ratio: ParameterId::BellsRatio.clamp(value.bells_ratio),
             bells_index: ParameterId::BellsIndex.clamp(value.bells_index),
             bells_index_decay: ParameterId::BellsIndexDecay.clamp(value.bells_index_decay),
+            tabla_row_decay: [
+                ParameterId::TablaCenterDecay.clamp(value.tabla_row_decay[0]),
+                ParameterId::TablaBetweenDecay.clamp(value.tabla_row_decay[1]),
+                ParameterId::TablaShoulderDecay.clamp(value.tabla_row_decay[2]),
+            ],
+            tabla_row_tone: [
+                ParameterId::TablaCenterTone.clamp(value.tabla_row_tone[0]),
+                ParameterId::TablaBetweenTone.clamp(value.tabla_row_tone[1]),
+                ParameterId::TablaShoulderTone.clamp(value.tabla_row_tone[2]),
+            ],
+            tabla_row_noise: [
+                ParameterId::TablaCenterNoise.clamp(value.tabla_row_noise[0]),
+                ParameterId::TablaBetweenNoise.clamp(value.tabla_row_noise[1]),
+                ParameterId::TablaShoulderNoise.clamp(value.tabla_row_noise[2]),
+            ],
+            tabla_glide: ParameterId::TablaGlide.clamp(value.tabla_glide),
+            tabla_bayan_tune: ParameterId::TablaBayanTune.clamp(value.tabla_bayan_tune),
+            tabla_dayan_tune: ParameterId::TablaDayanTune.clamp(value.tabla_dayan_tune),
+            trim_handpan: ParameterId::TrimHandpan.clamp(value.trim_handpan),
+            trim_ding: ParameterId::TrimDing.clamp(value.trim_ding),
+            trim_waveshape: ParameterId::TrimWaveshape.clamp(value.trim_waveshape),
+            trim_tambura: ParameterId::TrimTambura.clamp(value.trim_tambura),
+            trim_root: ParameterId::TrimRoot.clamp(value.trim_root),
+            trim_followers: ParameterId::TrimFollowers.clamp(value.trim_followers),
+            trim_fm_bass: ParameterId::TrimFmBass.clamp(value.trim_fm_bass),
+            trim_tabla: ParameterId::TrimTabla.clamp(value.trim_tabla),
+            trim_echo: ParameterId::TrimEcho.clamp(value.trim_echo),
             groove_click_enabled: value.groove_click_enabled,
             groove_auto_lock: value.groove_auto_lock,
             // Drop legacy Root mute bit; Recent/Second/Bass/Echo stay on the desk.
@@ -641,6 +810,10 @@ impl From<StoredSettings> for SettingsSnapshot {
             wash_solo: value.wash_solo & 0b111,
             handpan_muted: value.handpan_muted,
             handpan_solo: value.handpan_solo,
+            bass_muted: value.bass_muted,
+            bass_solo: value.bass_solo,
+            tabla_muted: value.tabla_muted,
+            tabla_solo: value.tabla_solo,
             reverb_muted: value.reverb_muted,
             reverb_solo: value.reverb_solo,
             keyboard_rows_set_place: value.keyboard_rows_set_place,
@@ -702,19 +875,27 @@ impl SettingsStore {
                 ParameterId::SupportDrift => data.support_drift = clamped,
                 ParameterId::SupportMotion => data.support_motion = clamped,
                 ParameterId::SupportFade => data.support_fade = clamped,
+                ParameterId::SupportTone => data.support_tone = clamped,
                 ParameterId::ReverbHandpan => data.reverb_handpan = clamped,
                 ParameterId::ReverbSupport => {
                     data.reverb_support = clamped;
                     data.reverb_ding = Some(clamped);
+                    data.reverb_waveshape = Some(clamped);
+                    data.reverb_tambura = Some(clamped);
+                    data.reverb_followers = Some(clamped);
                     data.reverb_recent = Some(clamped);
                     data.reverb_second = Some(clamped);
                     data.reverb_bass = Some(clamped);
                 }
                 ParameterId::ReverbDing => data.reverb_ding = Some(clamped),
+                ParameterId::ReverbWaveshape => data.reverb_waveshape = Some(clamped),
+                ParameterId::ReverbTambura => data.reverb_tambura = Some(clamped),
+                ParameterId::ReverbFollowers => data.reverb_followers = Some(clamped),
                 ParameterId::ReverbRecent => data.reverb_recent = Some(clamped),
                 ParameterId::ReverbSecond => data.reverb_second = Some(clamped),
                 ParameterId::ReverbBass => data.reverb_bass = Some(clamped),
                 ParameterId::ReverbEcho => data.reverb_echo = clamped,
+                ParameterId::ReverbTabla => data.reverb_tabla = clamped,
                 ParameterId::ReverbDecay => data.reverb_decay = clamped,
                 ParameterId::ReverbTone => data.reverb_tone = clamped,
                 ParameterId::DingShape => data.ding_shape = clamped,
@@ -738,6 +919,7 @@ impl SettingsStore {
                 ParameterId::MixTambura => data.mix_tambura = Some(clamped),
                 ParameterId::MixRecent => data.mix_recent = clamped,
                 ParameterId::MixSecond => data.mix_second = clamped,
+                ParameterId::MixFollowers => data.mix_followers = clamped,
                 ParameterId::MixBass => data.mix_bass = clamped,
                 ParameterId::MixTaps => data.mix_taps = clamped,
                 ParameterId::MixReverb => data.mix_reverb = clamped,
@@ -749,8 +931,11 @@ impl SettingsStore {
                 ParameterId::PanTambura => data.pan_tambura = clamped,
                 ParameterId::PanRecent => data.pan_recent = clamped,
                 ParameterId::PanSecond => data.pan_second = clamped,
+                ParameterId::PanFollowers => data.pan_followers = clamped,
                 ParameterId::PanBass => data.pan_bass = clamped,
+                ParameterId::PanFmBass => data.pan_fm_bass = clamped,
                 ParameterId::PanEcho => data.pan_echo = clamped,
+                ParameterId::PanTabla => data.pan_tabla = clamped,
                 ParameterId::PanReverb => data.pan_reverb = clamped,
                 ParameterId::FormantRate => data.formant_rate = clamped,
                 ParameterId::FormantDepth => data.formant_depth = clamped,
@@ -765,10 +950,33 @@ impl SettingsStore {
                 ParameterId::FmBassLevel => data.fm_bass_level = clamped,
                 ParameterId::BassLineAmount => data.bass_line_amount = clamped,
                 ParameterId::BassLineVariation => data.bass_line_variation = clamped,
+                ParameterId::TablaLineAmount => data.tabla_line_amount = clamped,
+                ParameterId::MixTabla => data.mix_tabla = clamped,
                 ParameterId::BellsDecay => data.bells_decay = clamped,
                 ParameterId::BellsRatio => data.bells_ratio = clamped,
                 ParameterId::BellsIndex => data.bells_index = clamped,
                 ParameterId::BellsIndexDecay => data.bells_index_decay = clamped,
+                ParameterId::TablaCenterDecay => data.tabla_row_decay[0] = clamped,
+                ParameterId::TablaCenterTone => data.tabla_row_tone[0] = clamped,
+                ParameterId::TablaCenterNoise => data.tabla_row_noise[0] = clamped,
+                ParameterId::TablaBetweenDecay => data.tabla_row_decay[1] = clamped,
+                ParameterId::TablaBetweenTone => data.tabla_row_tone[1] = clamped,
+                ParameterId::TablaBetweenNoise => data.tabla_row_noise[1] = clamped,
+                ParameterId::TablaShoulderDecay => data.tabla_row_decay[2] = clamped,
+                ParameterId::TablaShoulderTone => data.tabla_row_tone[2] = clamped,
+                ParameterId::TablaShoulderNoise => data.tabla_row_noise[2] = clamped,
+                ParameterId::TablaGlide => data.tabla_glide = clamped,
+                ParameterId::TablaBayanTune => data.tabla_bayan_tune = clamped,
+                ParameterId::TablaDayanTune => data.tabla_dayan_tune = clamped,
+                ParameterId::TrimHandpan => data.trim_handpan = clamped,
+                ParameterId::TrimDing => data.trim_ding = clamped,
+                ParameterId::TrimWaveshape => data.trim_waveshape = clamped,
+                ParameterId::TrimTambura => data.trim_tambura = clamped,
+                ParameterId::TrimRoot => data.trim_root = clamped,
+                ParameterId::TrimFollowers => data.trim_followers = clamped,
+                ParameterId::TrimFmBass => data.trim_fm_bass = clamped,
+                ParameterId::TrimTabla => data.trim_tabla = clamped,
+                ParameterId::TrimEcho => data.trim_echo = clamped,
             }
         }
         self.persist_current_state()
@@ -816,6 +1024,15 @@ impl SettingsStore {
         self.persist_current_state()
     }
 
+    pub(crate) fn update_tabla_groove_index(&self, index: u8) -> Result<()> {
+        {
+            let mut data = self.state.lock();
+            let max = (squawk_engine::GROOVES.len().saturating_sub(1)) as u8;
+            data.tabla_groove_index = index.min(max);
+        }
+        self.persist_current_state()
+    }
+
     pub(crate) fn update_support_parts(&self, muted: [bool; 5], solo: [bool; 5]) -> Result<()> {
         {
             let mut data = self.state.lock();
@@ -839,6 +1056,24 @@ impl SettingsStore {
             let mut data = self.state.lock();
             data.handpan_muted = muted;
             data.handpan_solo = solo;
+        }
+        self.persist_current_state()
+    }
+
+    pub(crate) fn update_bass_mute_solo(&self, muted: bool, solo: bool) -> Result<()> {
+        {
+            let mut data = self.state.lock();
+            data.bass_muted = muted;
+            data.bass_solo = solo;
+        }
+        self.persist_current_state()
+    }
+
+    pub(crate) fn update_tabla_mute_solo(&self, muted: bool, solo: bool) -> Result<()> {
+        {
+            let mut data = self.state.lock();
+            data.tabla_muted = muted;
+            data.tabla_solo = solo;
         }
         self.persist_current_state()
     }
@@ -979,13 +1214,18 @@ impl SettingsStore {
             data.support_drift = crate::DEFAULT_SUPPORT_DRIFT;
             data.support_motion = crate::DEFAULT_SUPPORT_MOTION;
             data.support_fade = crate::DEFAULT_SUPPORT_FADE;
+            data.support_tone = crate::DEFAULT_SUPPORT_TONE;
             data.reverb_handpan = crate::DEFAULT_REVERB_HANDPAN;
             data.reverb_support = crate::DEFAULT_REVERB_SUPPORT;
             data.reverb_ding = Some(crate::DEFAULT_REVERB_DING);
+            data.reverb_waveshape = Some(crate::DEFAULT_REVERB_WAVESHAPE);
+            data.reverb_tambura = Some(crate::DEFAULT_REVERB_TAMBURA);
+            data.reverb_followers = Some(crate::DEFAULT_REVERB_FOLLOWERS);
             data.reverb_recent = Some(crate::DEFAULT_REVERB_RECENT);
             data.reverb_second = Some(crate::DEFAULT_REVERB_SECOND);
             data.reverb_bass = Some(crate::DEFAULT_REVERB_BASS);
             data.reverb_echo = crate::DEFAULT_REVERB_ECHO;
+            data.reverb_tabla = crate::DEFAULT_REVERB_TABLA;
             data.reverb_decay = crate::DEFAULT_REVERB_DECAY;
             data.reverb_tone = crate::DEFAULT_REVERB_TONE;
             data.echo_instrument = crate::DEFAULT_ECHO_INSTRUMENT;
@@ -1011,6 +1251,7 @@ impl SettingsStore {
             data.mix_tambura = Some(0.0);
             data.mix_recent = crate::DEFAULT_MIX_LEVEL;
             data.mix_second = crate::DEFAULT_MIX_LEVEL;
+            data.mix_followers = crate::DEFAULT_MIX_LEVEL;
             data.mix_bass = crate::DEFAULT_MIX_LEVEL;
             data.mix_taps = crate::DEFAULT_MIX_LEVEL;
             data.mix_reverb = crate::DEFAULT_MIX_LEVEL;
@@ -1023,8 +1264,11 @@ impl SettingsStore {
             data.pan_tambura = crate::DEFAULT_PAN;
             data.pan_recent = crate::DEFAULT_PAN;
             data.pan_second = crate::DEFAULT_PAN;
+            data.pan_followers = crate::DEFAULT_PAN;
             data.pan_bass = crate::DEFAULT_PAN;
+            data.pan_fm_bass = crate::DEFAULT_PAN;
             data.pan_echo = crate::DEFAULT_PAN;
+            data.pan_tabla = crate::DEFAULT_PAN;
             data.pan_reverb = crate::DEFAULT_PAN;
             data.formant_rate = crate::DEFAULT_FORMANT_RATE;
             data.formant_depth = crate::DEFAULT_FORMANT_DEPTH;
@@ -1039,10 +1283,28 @@ impl SettingsStore {
             data.fm_bass_level = crate::DEFAULT_FM_BASS_LEVEL;
             data.bass_line_amount = crate::DEFAULT_BASS_LINE_AMOUNT;
             data.bass_line_variation = crate::DEFAULT_BASS_LINE_VARIATION;
+            data.tabla_line_amount = crate::DEFAULT_TABLA_LINE_AMOUNT;
+            data.mix_tabla = crate::DEFAULT_MIX_LEVEL;
+            data.tabla_groove_index = crate::DEFAULT_TABLA_GROOVE_INDEX;
             data.bells_decay = crate::DEFAULT_BELLS_DECAY;
             data.bells_ratio = crate::DEFAULT_BELLS_RATIO;
             data.bells_index = crate::DEFAULT_BELLS_INDEX;
             data.bells_index_decay = crate::DEFAULT_BELLS_INDEX_DECAY;
+            data.tabla_row_decay = crate::DEFAULT_TABLA_ROW_DECAY;
+            data.tabla_row_tone = crate::DEFAULT_TABLA_ROW_TONE;
+            data.tabla_row_noise = crate::DEFAULT_TABLA_ROW_NOISE;
+            data.tabla_glide = crate::DEFAULT_TABLA_GLIDE;
+            data.tabla_bayan_tune = crate::DEFAULT_TABLA_BAYAN_TUNE;
+            data.tabla_dayan_tune = crate::DEFAULT_TABLA_DAYAN_TUNE;
+            data.trim_handpan = crate::DEFAULT_TRIM;
+            data.trim_ding = crate::DEFAULT_TRIM;
+            data.trim_waveshape = crate::DEFAULT_TRIM;
+            data.trim_tambura = crate::DEFAULT_TRIM;
+            data.trim_root = crate::DEFAULT_TRIM;
+            data.trim_followers = crate::DEFAULT_TRIM;
+            data.trim_fm_bass = crate::DEFAULT_TRIM;
+            data.trim_tabla = crate::DEFAULT_TRIM;
+            data.trim_echo = crate::DEFAULT_TRIM;
             data.groove_click_enabled = crate::DEFAULT_GROOVE_CLICK_ENABLED;
             data.groove_auto_lock = crate::DEFAULT_GROOVE_AUTO_LOCK;
             data.support_muted = default_support_part_flags();
@@ -1051,6 +1313,10 @@ impl SettingsStore {
             data.wash_solo = 0;
             data.handpan_muted = false;
             data.handpan_solo = false;
+            data.bass_muted = false;
+            data.bass_solo = false;
+            data.tabla_muted = false;
+            data.tabla_solo = false;
             data.reverb_muted = false;
             data.reverb_solo = false;
             data.keyboard_rows_set_place = default_keyboard_rows_set_place();
@@ -1238,6 +1504,14 @@ fn default_support_fade() -> f32 {
     crate::DEFAULT_SUPPORT_FADE
 }
 
+fn default_support_tone() -> f32 {
+    crate::DEFAULT_SUPPORT_TONE
+}
+
+fn default_trim() -> f32 {
+    crate::DEFAULT_TRIM
+}
+
 fn default_reverb_handpan() -> f32 {
     crate::DEFAULT_REVERB_HANDPAN
 }
@@ -1248,6 +1522,10 @@ fn default_reverb_support() -> f32 {
 
 fn default_reverb_echo() -> f32 {
     crate::DEFAULT_REVERB_ECHO
+}
+
+fn default_reverb_tabla() -> f32 {
+    crate::DEFAULT_REVERB_TABLA
 }
 
 fn default_echo_instrument() -> u8 {
@@ -1382,6 +1660,14 @@ fn default_bass_line_variation() -> f32 {
     crate::DEFAULT_BASS_LINE_VARIATION
 }
 
+fn default_tabla_line_amount() -> f32 {
+    crate::DEFAULT_TABLA_LINE_AMOUNT
+}
+
+fn default_tabla_groove_index() -> u8 {
+    crate::DEFAULT_TABLA_GROOVE_INDEX
+}
+
 fn default_bells_decay() -> f32 {
     crate::DEFAULT_BELLS_DECAY
 }
@@ -1396,6 +1682,30 @@ fn default_bells_index() -> f32 {
 
 fn default_bells_index_decay() -> f32 {
     crate::DEFAULT_BELLS_INDEX_DECAY
+}
+
+fn default_tabla_row_decay() -> [f32; 3] {
+    crate::DEFAULT_TABLA_ROW_DECAY
+}
+
+fn default_tabla_row_tone() -> [f32; 3] {
+    crate::DEFAULT_TABLA_ROW_TONE
+}
+
+fn default_tabla_row_noise() -> [f32; 3] {
+    crate::DEFAULT_TABLA_ROW_NOISE
+}
+
+fn default_tabla_glide() -> f32 {
+    crate::DEFAULT_TABLA_GLIDE
+}
+
+fn default_tabla_bayan_tune() -> f32 {
+    crate::DEFAULT_TABLA_BAYAN_TUNE
+}
+
+fn default_tabla_dayan_tune() -> f32 {
+    crate::DEFAULT_TABLA_DAYAN_TUNE
 }
 
 fn default_groove_click_enabled() -> bool {

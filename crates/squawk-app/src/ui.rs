@@ -9,12 +9,12 @@ use eframe::{self, egui};
 use egui_plot::{Line, Plot, PlotBounds, PlotPoints};
 
 use crate::{
-    ControlBlock, EchoInstrument, Instrument, MidiLearnState, ParameterId,
+    ControlBlock, EchoInstrument, Instrument, MidiLearnState, MixChannel, ParameterId,
     analysis::{AudioTap, PitchEstimate, estimate_pitch_nccf},
     settings::SettingsStore,
 };
 use squawk_engine::{
-    ExciterMode, FmBassRecipe, GrooveStatus, HANDPAN_DING_MAX, HANDPAN_DING_MIN,
+    ExciterMode, FmBassRecipe, GROOVES, GrooveStatus, HANDPAN_DING_MAX, HANDPAN_DING_MIN,
     HANDPAN_SCALE_COUNT, handpan_notes, handpan_scale_name, support_part_flags,
 };
 
@@ -243,6 +243,28 @@ impl SquawkApp {
                             continue;
                         }
 
+                        // Tabla: A/W = open bayan without palm-press glide (Ge).
+                        if matches!(instrument, Instrument::Tabla)
+                            && matches!(*key, egui::Key::A | egui::Key::W)
+                        {
+                            let ding = self.control.handpan_ding();
+                            if *pressed {
+                                if self.keyboard_key_to_note.contains_key(key) {
+                                    continue;
+                                }
+                                self.keyboard_key_to_note.insert(*key, ding);
+                                crate::note_on(
+                                    &self.control,
+                                    ding,
+                                    self.keyboard_velocity,
+                                    squawk_engine::TABLA_GE_PLACE,
+                                );
+                            } else if self.keyboard_key_to_note.remove(key).is_some() {
+                                crate::note_off(&self.control, ding);
+                            }
+                            continue;
+                        }
+
                         if handpan_keys {
                             let notes = handpan_notes(
                                 self.control.handpan_scale(),
@@ -331,13 +353,13 @@ impl SquawkApp {
             ));
         }
         ui.add_space(8.0);
-        let level = match kind {
-            2 => ParameterId::MixTambura,
-            1 => ParameterId::MixWaveshape,
-            _ => ParameterId::MixDing,
+        let trim = match kind {
+            2 => ParameterId::TrimTambura,
+            1 => ParameterId::TrimWaveshape,
+            _ => ParameterId::TrimDing,
         };
-        ui.label("Level");
-        self.draw_parameter(ui, level, true);
+        ui.label("Trim (before mixer)");
+        self.draw_parameter(ui, trim, true);
         ui.add_space(8.0);
         // Resonator ignores Shape/Spread/Brightness — only show knobs that affect the voice.
         let voice_params: &[ParameterId] = match kind {
@@ -390,6 +412,7 @@ impl SquawkApp {
             Instrument::Handpan => DeskModule::Handpan,
             Instrument::Bass => DeskModule::FmBass,
             Instrument::Bells => DeskModule::Bells,
+            Instrument::Tabla => DeskModule::Tabla,
             Instrument::Resonator => DeskModule::Resonator,
             Instrument::Waveshape => DeskModule::Waveshape,
             Instrument::Tambura => DeskModule::Tambura,
@@ -402,14 +425,16 @@ impl SquawkApp {
                     | DeskModule::Resonator
                     | DeskModule::Waveshape
                     | DeskModule::Tambura
-                    | DeskModule::Recent
-                    | DeskModule::Second
+                    | DeskModule::RootDrone
+                    | DeskModule::Followers
                     | DeskModule::Bass
+                    | DeskModule::TablaLine
                     | DeskModule::Echo
                     | DeskModule::Reverb
             ),
             DeskModule::FmBass => self.open_module == DeskModule::FmBass,
             DeskModule::Bells => self.open_module == DeskModule::Bells,
+            DeskModule::Tabla => self.open_module == DeskModule::Tabla,
             // Solo playable modes stay on their strip; Handpan may also open these.
             DeskModule::Resonator => self.open_module == DeskModule::Resonator,
             DeskModule::Waveshape => self.open_module == DeskModule::Waveshape,
@@ -427,6 +452,7 @@ impl SquawkApp {
             Instrument::Handpan => &HANDPAN_STRIPS,
             Instrument::Bass => &BASS_STRIPS,
             Instrument::Bells => &BELLS_STRIPS,
+            Instrument::Tabla => &TABLA_STRIPS,
             Instrument::Resonator => &RESONATOR_STRIPS,
             Instrument::Waveshape => &WAVESHAPE_STRIPS,
             Instrument::Tambura => &TAMBURA_STRIPS,
@@ -442,6 +468,7 @@ impl SquawkApp {
                 Instrument::Handpan => "Handpan",
                 Instrument::Bass => "Bass",
                 Instrument::Bells => "Bells",
+                Instrument::Tabla => "Tabla",
                 Instrument::Resonator => "Resonator",
                 Instrument::Waveshape => "Waveshape",
                 Instrument::Tambura => "Tambura",
@@ -454,6 +481,7 @@ impl SquawkApp {
                     combo.selectable_value(&mut instrument, Instrument::Handpan.as_u8(), "Handpan");
                     combo.selectable_value(&mut instrument, Instrument::Bass.as_u8(), "Bass");
                     combo.selectable_value(&mut instrument, Instrument::Bells.as_u8(), "Bells");
+                    combo.selectable_value(&mut instrument, Instrument::Tabla.as_u8(), "Tabla");
                     combo.selectable_value(
                         &mut instrument,
                         Instrument::Resonator.as_u8(),
@@ -472,6 +500,7 @@ impl SquawkApp {
                     Instrument::Handpan => DeskModule::Handpan,
                     Instrument::Bass => DeskModule::FmBass,
                     Instrument::Bells => DeskModule::Bells,
+                    Instrument::Tabla => DeskModule::Tabla,
                     Instrument::Resonator => DeskModule::Resonator,
                     Instrument::Waveshape => DeskModule::Waveshape,
                     Instrument::Tambura => DeskModule::Tambura,
@@ -550,9 +579,10 @@ impl SquawkApp {
                     DeskModule::Resonator,
                     DeskModule::Waveshape,
                     DeskModule::Tambura,
-                    DeskModule::Recent,
-                    DeskModule::Second,
+                    DeskModule::RootDrone,
+                    DeskModule::Followers,
                     DeskModule::Bass,
+                    DeskModule::TablaLine,
                     DeskModule::Echo,
                 ],
             );
@@ -578,10 +608,18 @@ impl SquawkApp {
 
     fn draw_channel_row(&mut self, ui: &mut egui::Ui, module: DeskModule) {
         const NAME_W: f32 = 76.0;
-        const PAN_W: f32 = 168.0;
-        const LEVEL_W: f32 = 220.0;
-        const MUTE_W: f32 = 96.0;
-        const SEND_W: f32 = 168.0;
+        const LABEL_W: f32 = 36.0;
+        const PAN_SLIDER_W: f32 = 72.0;
+        const LEVEL_SLIDER_W: f32 = 120.0;
+        const SEND_SLIDER_W: f32 = 72.0;
+        const VALUE_W: f32 = 40.0;
+        const METER_W: f32 = 56.0;
+        const MUTE_BTN_W: f32 = 44.0;
+        const MUTE_GAP: f32 = 4.0;
+        const MUTE_W: f32 = MUTE_BTN_W * 2.0 + MUTE_GAP;
+        const PAN_W: f32 = LABEL_W + PAN_SLIDER_W + VALUE_W + 16.0;
+        const LEVEL_W: f32 = LABEL_W + LEVEL_SLIDER_W + VALUE_W + 16.0;
+        const SEND_W: f32 = LABEL_W + SEND_SLIDER_W + VALUE_W + 16.0;
 
         let selected = self.open_module == module && self.editor_open;
         let row_h = ui.spacing().interact_size.y;
@@ -613,10 +651,10 @@ impl SquawkApp {
                 egui::Layout::left_to_right(egui::Align::Center),
                 |col| {
                     if let Some(param) = module.pan() {
-                        col.label("Pan");
-                        col.spacing_mut().slider_width = 72.0;
+                        col.add_sized([LABEL_W, row_h], egui::Label::new("Pan"));
+                        col.spacing_mut().slider_width = PAN_SLIDER_W;
                         self.add_strip_slider(col, param);
-                        self.draw_strip_value(col, param);
+                        self.draw_strip_value(col, param, VALUE_W);
                     }
                 },
             );
@@ -626,11 +664,19 @@ impl SquawkApp {
                 egui::Layout::left_to_right(egui::Align::Center),
                 |col| {
                     if let Some(param) = module.fader() {
-                        col.label("Level");
-                        col.spacing_mut().slider_width = 120.0;
+                        col.add_sized([LABEL_W, row_h], egui::Label::new("Level"));
+                        col.spacing_mut().slider_width = LEVEL_SLIDER_W;
                         self.add_strip_slider(col, param);
-                        self.draw_strip_value(col, param);
+                        self.draw_strip_value(col, param, VALUE_W);
                     }
+                },
+            );
+
+            row.allocate_ui_with_layout(
+                egui::vec2(METER_W, row_h),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |col| {
+                    self.draw_strip_meter(col, module);
                 },
             );
 
@@ -638,48 +684,120 @@ impl SquawkApp {
                 egui::vec2(MUTE_W, row_h),
                 egui::Layout::left_to_right(egui::Align::Center),
                 |col| {
+                    let mute_solo = |col: &mut egui::Ui,
+                                    muted: bool,
+                                    solo: bool,
+                                    on_mute: &dyn Fn(),
+                                    on_solo: &dyn Fn()| {
+                        if col
+                            .add_sized(
+                                [MUTE_BTN_W, row_h],
+                                egui::SelectableLabel::new(muted, "Mute"),
+                            )
+                            .clicked()
+                        {
+                            on_mute();
+                        }
+                        col.add_space(MUTE_GAP);
+                        if col
+                            .add_sized(
+                                [MUTE_BTN_W, row_h],
+                                egui::SelectableLabel::new(solo, "Solo"),
+                            )
+                            .clicked()
+                        {
+                            on_solo();
+                        }
+                    };
+
                     if module == DeskModule::Handpan {
                         let muted = self.control.handpan_muted();
                         let solo = self.control.handpan_solo();
-                        if col.selectable_label(muted, "Mute").clicked() {
-                            self.persist_handpan_mute_solo(!muted, solo);
-                        }
-                        if col.selectable_label(solo, "Solo").clicked() {
-                            self.persist_handpan_mute_solo(self.control.handpan_muted(), !solo);
-                        }
+                        mute_solo(
+                            col,
+                            muted,
+                            solo,
+                            &|| self.persist_handpan_mute_solo(!muted, solo),
+                            &|| self.persist_handpan_mute_solo(self.control.handpan_muted(), !solo),
+                        );
                     } else if module == DeskModule::Reverb {
                         let muted = self.control.reverb_muted();
                         let solo = self.control.reverb_solo();
-                        if col.selectable_label(muted, "Mute").clicked() {
-                            self.persist_reverb_mute_solo(!muted, solo);
-                        }
-                        if col.selectable_label(solo, "Solo").clicked() {
-                            self.persist_reverb_mute_solo(self.control.reverb_muted(), !solo);
-                        }
+                        mute_solo(
+                            col,
+                            muted,
+                            solo,
+                            &|| self.persist_reverb_mute_solo(!muted, solo),
+                            &|| self.persist_reverb_mute_solo(self.control.reverb_muted(), !solo),
+                        );
+                    } else if module == DeskModule::Bass {
+                        let muted = self.control.bass_muted();
+                        let solo = self.control.bass_solo();
+                        mute_solo(
+                            col,
+                            muted,
+                            solo,
+                            &|| self.persist_bass_mute_solo(!muted, solo),
+                            &|| self.persist_bass_mute_solo(self.control.bass_muted(), !solo),
+                        );
+                    } else if module == DeskModule::TablaLine {
+                        let muted = self.control.tabla_muted();
+                        let solo = self.control.tabla_solo();
+                        mute_solo(
+                            col,
+                            muted,
+                            solo,
+                            &|| self.persist_tabla_mute_solo(!muted, solo),
+                            &|| self.persist_tabla_mute_solo(self.control.tabla_muted(), !solo),
+                        );
+                    } else if module == DeskModule::Followers {
+                        let mask = squawk_engine::FOLLOWERS_PART_MASK;
+                        let muted = self.control.support_muted();
+                        let solo = self.control.support_solo();
+                        let is_muted = (muted & mask) == mask;
+                        let is_solo = (solo & mask) == mask;
+                        mute_solo(
+                            col,
+                            is_muted,
+                            is_solo,
+                            &|| self.persist_parts(set_part_mask(muted, mask, !is_muted), solo),
+                            &|| {
+                                let muted = self.control.support_muted();
+                                self.persist_parts(muted, set_part_mask(solo, mask, !is_solo));
+                            },
+                        );
                     } else if let Some(mask) = module.wash_mask() {
                         let muted = self.control.wash_muted();
                         let solo = self.control.wash_solo();
                         let is_muted = (muted & mask) == mask;
                         let is_solo = (solo & mask) == mask;
-                        if col.selectable_label(is_muted, "Mute").clicked() {
-                            self.persist_wash_parts(set_part_mask(muted, mask, !is_muted), solo);
-                        }
-                        if col.selectable_label(is_solo, "Solo").clicked() {
-                            let muted = self.control.wash_muted();
-                            self.persist_wash_parts(muted, set_part_mask(solo, mask, !is_solo));
-                        }
+                        mute_solo(
+                            col,
+                            is_muted,
+                            is_solo,
+                            &|| {
+                                self.persist_wash_parts(set_part_mask(muted, mask, !is_muted), solo)
+                            },
+                            &|| {
+                                let muted = self.control.wash_muted();
+                                self.persist_wash_parts(muted, set_part_mask(solo, mask, !is_solo));
+                            },
+                        );
                     } else if let Some(mask) = module.part_mask() {
                         let muted = self.control.support_muted();
                         let solo = self.control.support_solo();
                         let is_muted = (muted & mask) == mask;
                         let is_solo = (solo & mask) == mask;
-                        if col.selectable_label(is_muted, "Mute").clicked() {
-                            self.persist_parts(set_part_mask(muted, mask, !is_muted), solo);
-                        }
-                        if col.selectable_label(is_solo, "Solo").clicked() {
-                            let muted = self.control.support_muted();
-                            self.persist_parts(muted, set_part_mask(solo, mask, !is_solo));
-                        }
+                        mute_solo(
+                            col,
+                            is_muted,
+                            is_solo,
+                            &|| self.persist_parts(set_part_mask(muted, mask, !is_muted), solo),
+                            &|| {
+                                let muted = self.control.support_muted();
+                                self.persist_parts(muted, set_part_mask(solo, mask, !is_solo));
+                            },
+                        );
                     }
                 },
             );
@@ -689,10 +807,10 @@ impl SquawkApp {
                 egui::Layout::left_to_right(egui::Align::Center),
                 |col| {
                     if let Some(param) = module.send() {
-                        col.label("Send");
-                        col.spacing_mut().slider_width = 72.0;
+                        col.add_sized([LABEL_W, row_h], egui::Label::new("Send"));
+                        col.spacing_mut().slider_width = SEND_SLIDER_W;
                         self.add_strip_slider(col, param);
-                        self.draw_strip_value(col, param);
+                        self.draw_strip_value(col, param, VALUE_W);
                     }
                 },
             );
@@ -730,13 +848,30 @@ impl SquawkApp {
         }
     }
 
+    fn persist_bass_mute_solo(&self, muted: bool, solo: bool) {
+        self.control.set_bass_mute_solo(muted, solo);
+        if let Err(err) = self.settings.update_bass_mute_solo(muted, solo) {
+            eprintln!("Warning: Failed to persist bass mute and solo: {err}");
+        }
+    }
+
+    fn persist_tabla_mute_solo(&self, muted: bool, solo: bool) {
+        self.control.set_tabla_mute_solo(muted, solo);
+        if let Err(err) = self.settings.update_tabla_mute_solo(muted, solo) {
+            eprintln!("Warning: Failed to persist tabla mute and solo: {err}");
+        }
+    }
+
     fn add_strip_slider(&self, ui: &mut egui::Ui, param: ParameterId) {
         let mut value = self.control.parameter_value(param);
         let mut slider = egui::Slider::new(&mut value, param.slider_range()).show_value(false);
         if param.logarithmic() {
             slider = slider.logarithmic(true);
         }
-        if param == ParameterId::DingStrings {
+        if param == ParameterId::DingStrings
+            || param == ParameterId::TablaBayanTune
+            || param == ParameterId::TablaDayanTune
+        {
             slider = slider.integer();
         }
         let response = ui
@@ -752,19 +887,30 @@ impl SquawkApp {
         self.strip_learn_menu(&response, param);
     }
 
-    fn draw_strip_value(&self, ui: &mut egui::Ui, param: ParameterId) {
+    fn draw_strip_value(&self, ui: &mut egui::Ui, param: ParameterId, width: f32) {
         let value = self.control.parameter_value(param);
         let listening = self.midi_learn.pending() == Some(param);
-        let text = if listening {
-            egui::RichText::new(param.format_value(value)).color(egui::Color32::LIGHT_GREEN)
-        } else if let Some(cc) = self.midi_learn.mapping_for(param) {
-            egui::RichText::new(format!("{} · CC {cc}", param.format_value(value))).small()
+        let mapped_cc = self.midi_learn.mapping_for(param);
+        // Keep strip value width stable — MIDI CC lives in the hover tip, not the label.
+        let mut text = egui::RichText::new(param.format_value(value))
+            .small()
+            .monospace();
+        if listening {
+            text = text.color(egui::Color32::LIGHT_GREEN);
+        }
+        let hover = if listening {
+            "Listening for MIDI… right-click to stop".to_string()
+        } else if let Some(cc) = mapped_cc {
+            format!("CC {cc} — right-click to MIDI Learn")
         } else {
-            egui::RichText::new(param.format_value(value)).small()
+            "Right-click to MIDI Learn".to_string()
         };
         let response = ui
-            .add(egui::Label::new(text).sense(egui::Sense::click()))
-            .on_hover_text("Right-click to MIDI Learn");
+            .add_sized(
+                [width, ui.spacing().interact_size.y],
+                egui::Label::new(text).sense(egui::Sense::click()),
+            )
+            .on_hover_text(hover);
         self.strip_learn_menu(&response, param);
     }
 
@@ -1204,6 +1350,9 @@ impl SquawkApp {
             DeskModule::Handpan => {
                 ui.label("Scale, ding, and tuning live in the main bar (shared with Bass).");
                 ui.add_space(6.0);
+                ui.label("Trim (before mixer)");
+                self.draw_parameter(ui, ParameterId::TrimHandpan, true);
+                ui.add_space(8.0);
                 for &param in ParameterId::handpan() {
                     self.draw_parameter(ui, param, true);
                     ui.add_space(8.0);
@@ -1212,23 +1361,48 @@ impl SquawkApp {
             DeskModule::Resonator => self.draw_drone_voice_synth(ui, 0),
             DeskModule::Waveshape => self.draw_drone_voice_synth(ui, 1),
             DeskModule::Tambura => self.draw_drone_voice_synth(ui, 2),
-            DeskModule::Recent | DeskModule::Second => {
-                let which = if self.open_module == DeskModule::Recent {
-                    "Recent"
-                } else {
-                    "Second"
-                };
-                ui.label(format!(
-                    "{which} is a soft following band under the Root washes — it tracks recent scale degrees. Level / Pan / Mute / Solo are on this strip."
-                ));
+            DeskModule::RootDrone => {
+                ui.label(
+                    "Low pedal on the key root. Fades in when you play, then holds until Mute or Level 0.",
+                );
                 ui.add_space(6.0);
-                let level = if self.open_module == DeskModule::Recent {
-                    ParameterId::MixRecent
-                } else {
-                    ParameterId::MixSecond
-                };
-                self.draw_parameter(ui, level, true);
+                ui.label("Trim (before mixer)");
+                self.draw_parameter(ui, ParameterId::TrimRoot, true);
                 ui.add_space(8.0);
+            }
+            DeskModule::Followers => {
+                ui.label(
+                    "Soft bands that track recent scale degrees under the Root washes. Strip Level is the bus; Follower 1 / 2 must be above 0 or you hear nothing.",
+                );
+                ui.add_space(6.0);
+                ui.label("Trim (before mixer)");
+                self.draw_parameter(ui, ParameterId::TrimFollowers, true);
+                ui.add_space(8.0);
+                ui.label("Voices");
+                for param in [ParameterId::MixRecent, ParameterId::MixSecond] {
+                    self.draw_parameter(ui, param, true);
+                    ui.add_space(8.0);
+                }
+                if self.control.parameter_value(ParameterId::MixRecent) <= 0.0
+                    && self.control.parameter_value(ParameterId::MixSecond) <= 0.0
+                {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(200, 140, 40),
+                        "Both voices are at 0 — raise Follower 1 or 2 to hear them.",
+                    );
+                    ui.add_space(8.0);
+                }
+                ui.label("Colour");
+                ui.label("Breath 0 = clearer tone; 1 = noise-driven (breathy).");
+                ui.add_space(4.0);
+                for param in [
+                    ParameterId::SupportTone,
+                    ParameterId::SupportPulse,
+                    ParameterId::SupportFade,
+                ] {
+                    self.draw_parameter(ui, param, true);
+                    ui.add_space(8.0);
+                }
                 ui.label("Band motion");
                 for &param in ParameterId::band_motion() {
                     self.draw_parameter(ui, param, true);
@@ -1237,28 +1411,82 @@ impl SquawkApp {
             }
             DeskModule::Bass => {
                 ui.label(
-                    "After four taps lock the groove, plays the root on every beat — strong on 1, softer on 2/3/4. Amount 0 turns it off.",
+                    "Groove FM bass line. Shares the tabla phrase clock; after tempo locks, the root lands on sam (phrase beat 1). Amount 0 turns it off.",
                 );
                 ui.add_space(6.0);
-                for param in [
-                    ParameterId::BassLineAmount,
-                    ParameterId::BassLineVariation,
-                    ParameterId::FmBassLevel,
-                ] {
+                for param in [ParameterId::BassLineAmount, ParameterId::BassLineVariation] {
                     self.draw_parameter(ui, param, true);
                     ui.add_space(8.0);
                 }
+                ui.add_space(8.0);
+                ui.label("Trim (before mixer)");
+                self.draw_parameter(ui, ParameterId::TrimFmBass, true);
                 ui.add_space(10.0);
                 ui.heading("Synth");
                 self.draw_fm_bass(ui);
             }
-            DeskModule::FmBass => self.draw_fm_bass(ui),
-            DeskModule::Bells => self.draw_bells_synth(ui),
+            DeskModule::TablaLine => {
+                ui.label(
+                    "Groove tabla theka. Sets the shared phrase length for bass + tabla; after tempo locks, walks bols on each beat. Amount 0 turns tabla off (phrase clock still runs for bass).",
+                );
+                ui.add_space(6.0);
+                ui.horizontal(|row| {
+                    row.label("Groove");
+                    let mut index = self.control.tabla_groove_index() as usize;
+                    let selected = GROOVES
+                        .get(index)
+                        .map(|g| g.name)
+                        .unwrap_or("Keherwa");
+                    egui::ComboBox::from_id_source("tabla_groove")
+                        .selected_text(selected)
+                        .show_ui(row, |ui| {
+                            for (i, groove) in GROOVES.iter().enumerate() {
+                                ui.selectable_value(&mut index, i, groove.name);
+                            }
+                        });
+                    let index = index.min(GROOVES.len().saturating_sub(1));
+                    if index as u8 != self.control.tabla_groove_index() {
+                        self.control.set_tabla_groove_index(index as u8);
+                        if let Err(err) = self.settings.update_tabla_groove_index(index as u8) {
+                            eprintln!("Warning: Failed to persist tabla groove: {err}");
+                        }
+                    }
+                });
+                ui.add_space(8.0);
+                self.draw_parameter(ui, ParameterId::TablaLineAmount, true);
+                ui.add_space(8.0);
+                ui.label("Trim (before mixer)");
+                self.draw_parameter(ui, ParameterId::TrimTabla, true);
+                ui.add_space(10.0);
+                ui.heading("Synth");
+                self.draw_tabla_synth(ui, false);
+            }
+            DeskModule::FmBass => {
+                ui.label("Trim (before mixer)");
+                self.draw_parameter(ui, ParameterId::TrimFmBass, true);
+                ui.add_space(8.0);
+                self.draw_fm_bass(ui);
+            }
+            DeskModule::Bells => {
+                ui.label("Trim (before mixer)");
+                self.draw_parameter(ui, ParameterId::TrimEcho, true);
+                ui.add_space(8.0);
+                self.draw_bells_synth(ui);
+            }
+            DeskModule::Tabla => {
+                ui.label("Trim (before mixer)");
+                self.draw_parameter(ui, ParameterId::TrimTabla, true);
+                ui.add_space(8.0);
+                self.draw_tabla_synth(ui, true);
+            }
             DeskModule::Echo => {
                 ui.label(
                     "Echo role: recalls recent phrases after a beat lag once tempo is locked. Density thins the shadow. Pick which voice plays the delayed hits.",
                 );
                 ui.add_space(6.0);
+                ui.label("Trim (before mixer)");
+                self.draw_parameter(ui, ParameterId::TrimEcho, true);
+                ui.add_space(8.0);
                 ui.horizontal(|row| {
                     row.label("Voice");
                     let mut instrument = self.control.echo_instrument();
@@ -1341,6 +1569,46 @@ impl SquawkApp {
         );
         ui.add_space(8.0);
         self.draw_bells_knobs(ui);
+    }
+
+    fn draw_tabla_row_knobs(&self, ui: &mut egui::Ui, params: &[ParameterId]) {
+        for &param in params {
+            self.draw_parameter(ui, param, true);
+            ui.add_space(6.0);
+        }
+    }
+
+    fn draw_tabla_synth(&self, ui: &mut egui::Ui, show_keymap: bool) {
+        ui.label(
+            "Modal tabla. Dayan keeps one pitch across rows — Decay / Tone / Noise shape open, mute, and rim hits in the groove.",
+        );
+        if show_keymap {
+            ui.add_space(6.0);
+            ui.label("With “Rows set where the strike lands” checked:");
+            ui.label("Z… /     center → Ga (palm glide) / Tu");
+            ui.label("S… ;     between → Ka / Ta");
+            ui.label("E… ]     shoulder → Ka / Na");
+            ui.label("A / W     bayan boom without palm press (Ge)");
+        }
+        ui.add_space(10.0);
+        ui.heading("Center (open / Ga·Ge·Tu)");
+        self.draw_tabla_row_knobs(ui, ParameterId::tabla_center());
+        ui.add_space(8.0);
+        ui.heading("Between (mute / Ka·Ta)");
+        self.draw_tabla_row_knobs(ui, ParameterId::tabla_between());
+        ui.add_space(8.0);
+        ui.heading("Shoulder (rim / Na)");
+        self.draw_tabla_row_knobs(ui, ParameterId::tabla_shoulder());
+        ui.add_space(10.0);
+        ui.heading("Tune");
+        for param in [
+            ParameterId::TablaGlide,
+            ParameterId::TablaBayanTune,
+            ParameterId::TablaDayanTune,
+        ] {
+            self.draw_parameter(ui, param, true);
+            ui.add_space(6.0);
+        }
     }
 
     fn draw_fm_bass(&mut self, ui: &mut egui::Ui) {
@@ -1499,7 +1767,10 @@ impl SquawkApp {
         if param.logarithmic() {
             slider = slider.logarithmic(true);
         }
-        if param == ParameterId::DingStrings {
+        if param == ParameterId::DingStrings
+            || param == ParameterId::TablaBayanTune
+            || param == ParameterId::TablaDayanTune
+        {
             slider = slider.integer();
         }
         if ui.add_enabled(enabled, slider).changed() {
@@ -1570,6 +1841,38 @@ impl SquawkApp {
                 })
                 .text(db),
         );
+    }
+
+    fn draw_strip_meter(&self, ui: &mut egui::Ui, module: DeskModule) {
+        let Some(channel) = module.mix_channel() else {
+            return;
+        };
+        let peak = self.control.channel_peak(channel).clamp(0.0, 1.0);
+        let height = ui.spacing().interact_size.y * 0.55;
+        let (rect, response) =
+            ui.allocate_exact_size(egui::vec2(48.0, height), egui::Sense::hover());
+        let painter = ui.painter_at(rect);
+        painter.rect_filled(rect, 2.0, egui::Color32::from_gray(28));
+        let fill_w = rect.width() * peak;
+        if fill_w > 0.5 {
+            let fill = egui::Rect::from_min_size(rect.min, egui::vec2(fill_w, rect.height()));
+            let color = if peak < 0.85 {
+                egui::Color32::from_rgb(70, 180, 110)
+            } else if peak < 0.95 {
+                egui::Color32::from_rgb(220, 180, 60)
+            } else {
+                egui::Color32::from_rgb(220, 90, 90)
+            };
+            painter.rect_filled(fill, 2.0, color);
+        }
+        if response.hovered() {
+            let db = if peak <= 0.000_01 {
+                "-inf".to_string()
+            } else {
+                format!("{:.1} dBFS", 20.0 * peak.log10())
+            };
+            response.on_hover_text(db);
+        }
     }
 
     /// Pitch debug view. It stays off the desk.
@@ -1937,26 +2240,29 @@ impl eframe::App for SquawkApp {
 enum DeskModule {
     Handpan,
     Bass,
+    TablaLine,
     Echo,
     Reverb,
     Modal,
     FmBass,
     Bells,
+    Tabla,
     Resonator,
     Waveshape,
     Tambura,
-    Recent,
-    Second,
+    RootDrone,
+    Followers,
 }
 
-const HANDPAN_STRIPS: [DeskModule; 9] = [
+const HANDPAN_STRIPS: [DeskModule; 10] = [
     DeskModule::Handpan,
     DeskModule::Resonator,
     DeskModule::Waveshape,
     DeskModule::Tambura,
-    DeskModule::Recent,
-    DeskModule::Second,
+    DeskModule::RootDrone,
+    DeskModule::Followers,
     DeskModule::Bass,
+    DeskModule::TablaLine,
     DeskModule::Echo,
     DeskModule::Reverb,
 ];
@@ -1964,6 +2270,8 @@ const HANDPAN_STRIPS: [DeskModule; 9] = [
 const BASS_STRIPS: [DeskModule; 1] = [DeskModule::FmBass];
 
 const BELLS_STRIPS: [DeskModule; 1] = [DeskModule::Bells];
+
+const TABLA_STRIPS: [DeskModule; 1] = [DeskModule::Tabla];
 
 const RESONATOR_STRIPS: [DeskModule; 1] = [DeskModule::Resonator];
 
@@ -1978,28 +2286,47 @@ impl DeskModule {
         match self {
             DeskModule::Handpan => "Handpan",
             DeskModule::Bass | DeskModule::FmBass => "Bass",
+            DeskModule::TablaLine => "Tabla",
             DeskModule::Echo => "Echo",
             DeskModule::Bells => "Bells",
+            DeskModule::Tabla => "Tabla",
             DeskModule::Resonator => "Resonator",
             DeskModule::Waveshape => "Waveshape",
             DeskModule::Tambura => "Tambura",
-            DeskModule::Recent => "Recent",
-            DeskModule::Second => "Second",
+            DeskModule::RootDrone => "Root drone",
+            DeskModule::Followers => "Followers",
             DeskModule::Reverb => "Reverb",
             DeskModule::Modal => "Modal",
+        }
+    }
+
+    fn mix_channel(self) -> Option<MixChannel> {
+        match self {
+            DeskModule::Handpan => Some(MixChannel::Handpan),
+            DeskModule::Resonator => Some(MixChannel::Resonator),
+            DeskModule::Waveshape => Some(MixChannel::Waveshape),
+            DeskModule::Tambura => Some(MixChannel::Tambura),
+            DeskModule::RootDrone => Some(MixChannel::RootDrone),
+            DeskModule::Followers => Some(MixChannel::Followers),
+            DeskModule::Bass | DeskModule::FmBass => Some(MixChannel::FmBass),
+            DeskModule::TablaLine | DeskModule::Tabla => Some(MixChannel::Tabla),
+            DeskModule::Echo | DeskModule::Bells => Some(MixChannel::Echo),
+            DeskModule::Reverb => Some(MixChannel::Reverb),
+            DeskModule::Modal => None,
         }
     }
 
     fn fader(self) -> Option<ParameterId> {
         match self {
             DeskModule::Handpan => Some(ParameterId::MixHandpan),
-            DeskModule::Bass => Some(ParameterId::MixBass),
-            DeskModule::Echo | DeskModule::Bells => Some(ParameterId::MixTaps),
+            DeskModule::Bass => Some(ParameterId::FmBassLevel),
+            DeskModule::TablaLine => Some(ParameterId::MixTabla),
+            DeskModule::Echo | DeskModule::Bells | DeskModule::Tabla => Some(ParameterId::MixTaps),
             DeskModule::Resonator => Some(ParameterId::MixDing),
             DeskModule::Waveshape => Some(ParameterId::MixWaveshape),
             DeskModule::Tambura => Some(ParameterId::MixTambura),
-            DeskModule::Recent => Some(ParameterId::MixRecent),
-            DeskModule::Second => Some(ParameterId::MixSecond),
+            DeskModule::RootDrone => Some(ParameterId::MixBass),
+            DeskModule::Followers => Some(ParameterId::MixFollowers),
             DeskModule::Modal => Some(ParameterId::OutputGain),
             DeskModule::FmBass => Some(ParameterId::FmBassLevel),
             DeskModule::Reverb => Some(ParameterId::MixReverb),
@@ -2012,27 +2339,32 @@ impl DeskModule {
             DeskModule::Resonator => Some(ParameterId::PanDing),
             DeskModule::Waveshape => Some(ParameterId::PanWaveshape),
             DeskModule::Tambura => Some(ParameterId::PanTambura),
-            DeskModule::Recent => Some(ParameterId::PanRecent),
-            DeskModule::Second => Some(ParameterId::PanSecond),
-            DeskModule::Bass => Some(ParameterId::PanBass),
+            DeskModule::RootDrone => Some(ParameterId::PanBass),
+            DeskModule::Followers => Some(ParameterId::PanFollowers),
+            DeskModule::Bass => Some(ParameterId::PanFmBass),
+            DeskModule::TablaLine => Some(ParameterId::PanTabla),
             DeskModule::Echo => Some(ParameterId::PanEcho),
             DeskModule::Reverb => Some(ParameterId::PanReverb),
-            DeskModule::Modal | DeskModule::FmBass | DeskModule::Bells => None,
+            DeskModule::Modal | DeskModule::FmBass | DeskModule::Bells | DeskModule::Tabla => None,
         }
     }
 
     fn send(self) -> Option<ParameterId> {
         match self {
             DeskModule::Handpan => Some(ParameterId::ReverbHandpan),
-            // Shared pad-bus send (Root washes + following pads).
-            DeskModule::Resonator
-            | DeskModule::Waveshape
-            | DeskModule::Tambura
-            | DeskModule::Recent
-            | DeskModule::Second => Some(ParameterId::ReverbDing),
-            DeskModule::Bass => Some(ParameterId::ReverbBass),
+            DeskModule::Resonator => Some(ParameterId::ReverbDing),
+            DeskModule::Waveshape => Some(ParameterId::ReverbWaveshape),
+            DeskModule::Tambura => Some(ParameterId::ReverbTambura),
+            DeskModule::Followers => Some(ParameterId::ReverbFollowers),
+            DeskModule::RootDrone => Some(ParameterId::ReverbBass),
+            DeskModule::Bass => None,
+            DeskModule::TablaLine => Some(ParameterId::ReverbTabla),
             DeskModule::Echo => Some(ParameterId::ReverbEcho),
-            DeskModule::Reverb | DeskModule::Modal | DeskModule::FmBass | DeskModule::Bells => None,
+            DeskModule::Reverb
+            | DeskModule::Modal
+            | DeskModule::FmBass
+            | DeskModule::Bells
+            | DeskModule::Tabla => None,
         }
     }
 
@@ -2046,12 +2378,10 @@ impl DeskModule {
         }
     }
 
-    /// Support mute/solo bits for Recent / Second / Bass / Echo strips.
+    /// Support mute/solo bits for Root drone / Echo (Followers handled as a pair).
     fn part_mask(self) -> Option<u8> {
         match self {
-            DeskModule::Recent => Some(1 << 1),
-            DeskModule::Second => Some(1 << 2),
-            DeskModule::Bass => Some(1 << 3),
+            DeskModule::RootDrone => Some(1 << 3),
             DeskModule::Echo => Some(1 << 4),
             _ => None,
         }

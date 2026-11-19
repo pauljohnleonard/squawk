@@ -197,22 +197,28 @@ impl Voice {
         let index_decay_s =
             INDEX_DECAY_MIN_S + (INDEX_DECAY_MAX_S - INDEX_DECAY_MIN_S) * index_decay_amt;
         let brightness = 0.85 + 0.15 * place;
+        // One string: overlapping plucks keep the ringing phase/amp instead of hard-cutting.
+        let ringing = self.active && self.amp > QUIET;
 
         self.active = true;
-        self.carrier_phase = 0.0;
-        self.mod_phase = 0.0;
         self.carrier_inc = TAU * hz * dt;
         self.mod_inc = TAU * hz * ratio * dt;
-        self.amp = 0.0;
         self.amp_level = amplitude * AMP_GAIN;
         self.amp_attack = 1.0 - (-dt / AMP_ATTACK_S).exp();
         self.amp_decay = (-dt / amp_decay_s).exp();
         self.index_peak = index * brightness * (0.65 + 0.35 * amplitude);
-        self.index = self.index_peak;
         self.index_decay = (-dt / index_decay_s).exp();
         self.feedback = FEEDBACK_MAX * feedback;
-        self.mod_prev = 0.0;
         self.age = 0;
+        if ringing {
+            // Keep phase / amp / index; attack eases toward the new targets.
+        } else {
+            self.carrier_phase = 0.0;
+            self.mod_phase = 0.0;
+            self.mod_prev = 0.0;
+            self.amp = 0.0;
+            self.index = INDEX_FLOOR;
+        }
     }
 
     fn sample(&mut self) -> f32 {
@@ -224,10 +230,11 @@ impl Voice {
         let attack_samples = (AMP_ATTACK_S * 48_000.0) as u32 + 8;
         if self.age < attack_samples {
             self.amp += (self.amp_level - self.amp) * self.amp_attack;
+            self.index += (self.index_peak - self.index) * self.amp_attack;
         } else {
             self.amp *= self.amp_decay;
+            self.index = INDEX_FLOOR + (self.index - INDEX_FLOOR) * self.index_decay;
         }
-        self.index = INDEX_FLOOR + (self.index - INDEX_FLOOR) * self.index_decay;
 
         let modulator = (self.mod_phase + self.feedback * self.mod_prev).sin();
         self.mod_prev = modulator;
@@ -395,6 +402,23 @@ mod tests {
             peak = peak.max(sample.abs());
         }
         assert!(peak > 0.02, "retrigger should sound, peak {peak}");
+    }
+
+    #[test]
+    fn retrigger_does_not_hard_cut_the_string() {
+        let mut bass = FmBass::new(RATE);
+        bass.strike_at(48, 1.0, 0.0);
+        for _ in 0..(RATE as usize / 8) {
+            let _ = bass.next_sample();
+        }
+        let before = bass.next_sample();
+        bass.strike_at(48, 1.0, 0.0);
+        let after = bass.next_sample();
+        let jump = (after - before).abs();
+        assert!(
+            jump < 0.08,
+            "retrigger clicked: before {before} after {after} jump {jump}"
+        );
     }
 
     #[test]

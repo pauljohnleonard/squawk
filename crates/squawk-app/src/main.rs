@@ -13,13 +13,20 @@ use parking_lot::Mutex;
 
 use squawk_engine::{
     BASS_LINE_AMOUNT_RANGE, BASS_LINE_VARIATION_RANGE, BELLS_DECAY_RANGE, BELLS_INDEX_DECAY_RANGE,
-    BELLS_INDEX_RANGE, BELLS_RATIO_RANGE, BassLine, Bells, DECO_DENSITY_RANGE,
+    BELLS_INDEX_RANGE, BELLS_RATIO_RANGE, BassLine, Bells, DECO_DENSITY_RANGE, PhraseClock,
+    GROOVES,
     DECO_LAG_BEATS_RANGE, DEFAULT_BASS_LINE_AMOUNT as ENGINE_DEFAULT_BASS_LINE_AMOUNT,
     DEFAULT_BASS_LINE_VARIATION as ENGINE_DEFAULT_BASS_LINE_VARIATION,
     DEFAULT_BELLS_DECAY as ENGINE_DEFAULT_BELLS_DECAY,
     DEFAULT_BELLS_INDEX as ENGINE_DEFAULT_BELLS_INDEX,
     DEFAULT_BELLS_INDEX_DECAY as ENGINE_DEFAULT_BELLS_INDEX_DECAY, DEFAULT_BELLS_OCTAVE,
     DEFAULT_BELLS_RATIO as ENGINE_DEFAULT_BELLS_RATIO,
+    DEFAULT_TABLA_BAYAN_TUNE as ENGINE_DEFAULT_TABLA_BAYAN_TUNE,
+    DEFAULT_TABLA_DAYAN_TUNE as ENGINE_DEFAULT_TABLA_DAYAN_TUNE,
+    DEFAULT_TABLA_GLIDE as ENGINE_DEFAULT_TABLA_GLIDE,
+    DEFAULT_TABLA_ROW_DECAY as ENGINE_DEFAULT_TABLA_ROW_DECAY,
+    DEFAULT_TABLA_ROW_NOISE as ENGINE_DEFAULT_TABLA_ROW_NOISE,
+    DEFAULT_TABLA_ROW_TONE as ENGINE_DEFAULT_TABLA_ROW_TONE,
     DEFAULT_BREATH_AUTO_LEVEL as ENGINE_DEFAULT_BREATH_AUTO_LEVEL,
     DEFAULT_BREATH_FEEDBACK as ENGINE_DEFAULT_BREATH_FEEDBACK,
     DEFAULT_BREATH_NOISE_CUTOFF_HZ as ENGINE_DEFAULT_BREATH_NOISE_CUTOFF_HZ,
@@ -67,18 +74,24 @@ use squawk_engine::{
     DEFAULT_REVERB_DECAY as ENGINE_DEFAULT_REVERB_DECAY,
     DEFAULT_REVERB_DING as ENGINE_DEFAULT_REVERB_DING,
     DEFAULT_REVERB_ECHO as ENGINE_DEFAULT_REVERB_ECHO,
+    DEFAULT_REVERB_FOLLOWERS as ENGINE_DEFAULT_REVERB_FOLLOWERS,
+    DEFAULT_REVERB_TABLA as ENGINE_DEFAULT_REVERB_TABLA,
+    DEFAULT_REVERB_TAMBURA as ENGINE_DEFAULT_REVERB_TAMBURA,
     DEFAULT_REVERB_HANDPAN as ENGINE_DEFAULT_REVERB_HANDPAN,
     DEFAULT_REVERB_RECENT as ENGINE_DEFAULT_REVERB_RECENT,
     DEFAULT_REVERB_SECOND as ENGINE_DEFAULT_REVERB_SECOND,
     DEFAULT_REVERB_SUPPORT as ENGINE_DEFAULT_REVERB_SUPPORT,
     DEFAULT_REVERB_TONE as ENGINE_DEFAULT_REVERB_TONE,
+    DEFAULT_REVERB_WAVESHAPE as ENGINE_DEFAULT_REVERB_WAVESHAPE,
     DEFAULT_SUPPORT_DRIFT as ENGINE_DEFAULT_SUPPORT_DRIFT,
     DEFAULT_SUPPORT_FADE as ENGINE_DEFAULT_SUPPORT_FADE,
     DEFAULT_SUPPORT_LEVEL as ENGINE_DEFAULT_SUPPORT_LEVEL,
     DEFAULT_SUPPORT_MOTION as ENGINE_DEFAULT_SUPPORT_MOTION,
     DEFAULT_SUPPORT_PULSE as ENGINE_DEFAULT_SUPPORT_PULSE,
+    DEFAULT_SUPPORT_TONE as ENGINE_DEFAULT_SUPPORT_TONE,
     DEFAULT_SUPPORT_WANDER as ENGINE_DEFAULT_SUPPORT_WANDER,
     DEFAULT_SUPPORT_WIDTH as ENGINE_DEFAULT_SUPPORT_WIDTH,
+    DEFAULT_TRIM as ENGINE_DEFAULT_TRIM,
     DEFAULT_TAMBURA_CYCLE as ENGINE_DEFAULT_TAMBURA_CYCLE,
     DEFAULT_TAMBURA_JAWARI as ENGINE_DEFAULT_TAMBURA_JAWARI,
     DEFAULT_TAMBURA_PICK as ENGINE_DEFAULT_TAMBURA_PICK,
@@ -94,12 +107,16 @@ use squawk_engine::{
     HANDPAN_DING_MIN as ENGINE_HANDPAN_DING_MIN, HANDPAN_GLIDE_RANGE, HANDPAN_HIT_RANGE,
     HANDPAN_PARTIAL_RANGE, HANDPAN_SCALE_COUNT as ENGINE_HANDPAN_SCALE_COUNT, Handpan,
     MIX_LEVEL_RANGE, PAN_RANGE, PlayMemory, REVERB_BASS_RANGE, REVERB_DECAY_RANGE,
-    REVERB_DING_RANGE, REVERB_ECHO_RANGE, REVERB_HANDPAN_RANGE, REVERB_RECENT_RANGE,
+    REVERB_DING_RANGE, REVERB_ECHO_RANGE, REVERB_FOLLOWERS_RANGE, REVERB_HANDPAN_RANGE,
+    REVERB_RECENT_RANGE, REVERB_TABLA_RANGE, REVERB_TAMBURA_RANGE, REVERB_WAVESHAPE_RANGE,
     REVERB_SECOND_RANGE, REVERB_SUPPORT_RANGE, REVERB_TONE_RANGE, Reverb, SUPPORT_DRIFT_RANGE,
     SUPPORT_FADE_RANGE, SUPPORT_LEVEL_RANGE, SUPPORT_MOTION_RANGE, SUPPORT_PULSE_RANGE,
-    SUPPORT_WANDER_RANGE, SUPPORT_WIDTH_RANGE, StrikeVoice, Support, TAMBURA_CYCLE_RANGE,
-    TAMBURA_JAWARI_RANGE, TAMBURA_PICK_RANGE, TAMBURA_STRUM_RANGE, TamburaBank,
-    handpan_interval_hz, stereo_pan,
+    SUPPORT_TONE_RANGE, SUPPORT_WANDER_RANGE, SUPPORT_WIDTH_RANGE, TRIM_RANGE, StrikeVoice,
+    Support, TABLA_BAYAN_TUNE_RANGE,
+    TABLA_BRIGHTNESS_RANGE, TABLA_DAYAN_TUNE_RANGE, TABLA_DECAY_RANGE, TABLA_GLIDE_RANGE,
+    TABLA_GE_PLACE, TABLA_LINE_AMOUNT_RANGE, TABLA_NOISE_RANGE, TABLA_ROWS,
+    TAMBURA_CYCLE_RANGE, TAMBURA_JAWARI_RANGE, TAMBURA_PICK_RANGE, TAMBURA_STRUM_RANGE, Tabla,
+    TablaLine, TablaRowParams, TamburaBank, handpan_interval_hz, stereo_pan,
 };
 
 use settings::SettingsStore;
@@ -152,13 +169,19 @@ pub(crate) const DEFAULT_SUPPORT_WANDER: f32 = ENGINE_DEFAULT_SUPPORT_WANDER;
 pub(crate) const DEFAULT_SUPPORT_DRIFT: f32 = ENGINE_DEFAULT_SUPPORT_DRIFT;
 pub(crate) const DEFAULT_SUPPORT_MOTION: f32 = ENGINE_DEFAULT_SUPPORT_MOTION;
 pub(crate) const DEFAULT_SUPPORT_FADE: f32 = ENGINE_DEFAULT_SUPPORT_FADE;
+pub(crate) const DEFAULT_SUPPORT_TONE: f32 = ENGINE_DEFAULT_SUPPORT_TONE;
+pub(crate) const DEFAULT_TRIM: f32 = ENGINE_DEFAULT_TRIM;
 pub(crate) const DEFAULT_REVERB_HANDPAN: f32 = ENGINE_DEFAULT_REVERB_HANDPAN;
 pub(crate) const DEFAULT_REVERB_SUPPORT: f32 = ENGINE_DEFAULT_REVERB_SUPPORT;
 pub(crate) const DEFAULT_REVERB_DING: f32 = ENGINE_DEFAULT_REVERB_DING;
+pub(crate) const DEFAULT_REVERB_WAVESHAPE: f32 = ENGINE_DEFAULT_REVERB_WAVESHAPE;
+pub(crate) const DEFAULT_REVERB_TAMBURA: f32 = ENGINE_DEFAULT_REVERB_TAMBURA;
+pub(crate) const DEFAULT_REVERB_FOLLOWERS: f32 = ENGINE_DEFAULT_REVERB_FOLLOWERS;
 pub(crate) const DEFAULT_REVERB_RECENT: f32 = ENGINE_DEFAULT_REVERB_RECENT;
 pub(crate) const DEFAULT_REVERB_SECOND: f32 = ENGINE_DEFAULT_REVERB_SECOND;
 pub(crate) const DEFAULT_REVERB_BASS: f32 = ENGINE_DEFAULT_REVERB_BASS;
 pub(crate) const DEFAULT_REVERB_ECHO: f32 = ENGINE_DEFAULT_REVERB_ECHO;
+pub(crate) const DEFAULT_REVERB_TABLA: f32 = ENGINE_DEFAULT_REVERB_TABLA;
 pub(crate) const DEFAULT_REVERB_DECAY: f32 = ENGINE_DEFAULT_REVERB_DECAY;
 pub(crate) const DEFAULT_REVERB_TONE: f32 = ENGINE_DEFAULT_REVERB_TONE;
 pub(crate) const DEFAULT_DING_WASH: u8 = ENGINE_DEFAULT_DING_WASH;
@@ -190,6 +213,15 @@ pub(crate) const DEFAULT_BELLS_DECAY: f32 = ENGINE_DEFAULT_BELLS_DECAY;
 pub(crate) const DEFAULT_BELLS_RATIO: f32 = ENGINE_DEFAULT_BELLS_RATIO;
 pub(crate) const DEFAULT_BELLS_INDEX: f32 = ENGINE_DEFAULT_BELLS_INDEX;
 pub(crate) const DEFAULT_BELLS_INDEX_DECAY: f32 = ENGINE_DEFAULT_BELLS_INDEX_DECAY;
+pub(crate) const DEFAULT_TABLA_GLIDE: f32 = ENGINE_DEFAULT_TABLA_GLIDE;
+pub(crate) const DEFAULT_TABLA_BAYAN_TUNE: f32 = ENGINE_DEFAULT_TABLA_BAYAN_TUNE;
+pub(crate) const DEFAULT_TABLA_DAYAN_TUNE: f32 = ENGINE_DEFAULT_TABLA_DAYAN_TUNE;
+pub(crate) const DEFAULT_TABLA_ROW_DECAY: [f32; 3] = ENGINE_DEFAULT_TABLA_ROW_DECAY;
+pub(crate) const DEFAULT_TABLA_ROW_TONE: [f32; 3] = ENGINE_DEFAULT_TABLA_ROW_TONE;
+pub(crate) const DEFAULT_TABLA_ROW_NOISE: [f32; 3] = ENGINE_DEFAULT_TABLA_ROW_NOISE;
+/// Opt-in accompaniment default (engine TablaLine still defaults louder when armed).
+pub(crate) const DEFAULT_TABLA_LINE_AMOUNT: f32 = 0.0;
+pub(crate) const DEFAULT_TABLA_GROOVE_INDEX: u8 = 0;
 pub(crate) const DEFAULT_PAN: f32 = ENGINE_DEFAULT_PAN;
 pub(crate) const DEFAULT_FORMANT_RATE: f32 = ENGINE_DEFAULT_FORMANT_RATE;
 pub(crate) const DEFAULT_FORMANT_DEPTH: f32 = ENGINE_DEFAULT_FORMANT_DEPTH;
@@ -212,6 +244,7 @@ pub(crate) enum Instrument {
     Resonator = 4,
     Waveshape = 5,
     Tambura = 6,
+    Tabla = 7,
 }
 
 impl Instrument {
@@ -227,6 +260,7 @@ impl Instrument {
             4 => Instrument::Resonator,
             5 => Instrument::Waveshape,
             6 => Instrument::Tambura,
+            7 => Instrument::Tabla,
             _ => Instrument::Modal,
         }
     }
@@ -241,6 +275,7 @@ impl Instrument {
                 | Instrument::Resonator
                 | Instrument::Waveshape
                 | Instrument::Tambura
+                | Instrument::Tabla
         )
     }
 
@@ -280,6 +315,24 @@ const STRIKE_QUEUE_LEN: usize = 16;
 const PEAK_HALF_LIFE_S: f32 = 0.5;
 const PEAK_DECAY_TAU: f32 = PEAK_HALF_LIFE_S / core::f32::consts::LN_2;
 
+/// Per-strip signal meters on the Handpan desk (and matching solo instruments).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(usize)]
+pub(crate) enum MixChannel {
+    Handpan = 0,
+    Resonator,
+    Waveshape,
+    Tambura,
+    RootDrone,
+    Followers,
+    FmBass,
+    Tabla,
+    Echo,
+    Reverb,
+}
+
+pub(crate) const MIX_CHANNEL_COUNT: usize = 10;
+
 #[derive(Debug)]
 struct ControlBlock {
     gate: AtomicBool,
@@ -295,6 +348,7 @@ struct ControlBlock {
     release_ms_bits: AtomicU32,
     damping_ratio_bits: AtomicU32,
     peak_bits: AtomicU32,
+    channel_peak_bits: [AtomicU32; MIX_CHANNEL_COUNT],
     inharmonicity_bits: AtomicU32,
     position_coupling_bits: AtomicU32,
     velocity_coupling_bits: AtomicU32,
@@ -324,13 +378,18 @@ struct ControlBlock {
     support_drift_bits: AtomicU32,
     support_motion_bits: AtomicU32,
     support_fade_bits: AtomicU32,
+    support_tone_bits: AtomicU32,
     reverb_handpan_bits: AtomicU32,
     reverb_support_bits: AtomicU32,
     reverb_ding_bits: AtomicU32,
+    reverb_waveshape_bits: AtomicU32,
+    reverb_tambura_bits: AtomicU32,
+    reverb_followers_bits: AtomicU32,
     reverb_recent_bits: AtomicU32,
     reverb_second_bits: AtomicU32,
     reverb_bass_bits: AtomicU32,
     reverb_echo_bits: AtomicU32,
+    reverb_tabla_bits: AtomicU32,
     reverb_decay_bits: AtomicU32,
     reverb_tone_bits: AtomicU32,
     echo_instrument: AtomicU8,
@@ -340,6 +399,10 @@ struct ControlBlock {
     wash_solo: AtomicU8,
     handpan_muted: AtomicBool,
     handpan_solo: AtomicBool,
+    bass_muted: AtomicBool,
+    bass_solo: AtomicBool,
+    tabla_muted: AtomicBool,
+    tabla_solo: AtomicBool,
     reverb_muted: AtomicBool,
     reverb_solo: AtomicBool,
     ding_wash: AtomicU8,
@@ -364,6 +427,7 @@ struct ControlBlock {
     mix_tambura_bits: AtomicU32,
     mix_recent_bits: AtomicU32,
     mix_second_bits: AtomicU32,
+    mix_followers_bits: AtomicU32,
     mix_bass_bits: AtomicU32,
     mix_taps_bits: AtomicU32,
     mix_reverb_bits: AtomicU32,
@@ -375,8 +439,11 @@ struct ControlBlock {
     pan_tambura_bits: AtomicU32,
     pan_recent_bits: AtomicU32,
     pan_second_bits: AtomicU32,
+    pan_followers_bits: AtomicU32,
     pan_bass_bits: AtomicU32,
+    pan_fm_bass_bits: AtomicU32,
     pan_echo_bits: AtomicU32,
+    pan_tabla_bits: AtomicU32,
     pan_reverb_bits: AtomicU32,
     formant_rate_bits: AtomicU32,
     formant_depth_bits: AtomicU32,
@@ -391,11 +458,29 @@ struct ControlBlock {
     fm_bass_level_bits: AtomicU32,
     bass_line_amount_bits: AtomicU32,
     bass_line_variation_bits: AtomicU32,
+    tabla_line_amount_bits: AtomicU32,
+    mix_tabla_bits: AtomicU32,
+    tabla_groove_index: AtomicU8,
     bells_decay_bits: AtomicU32,
     bells_ratio_bits: AtomicU32,
     bells_index_bits: AtomicU32,
     bells_index_decay_bits: AtomicU32,
-    groove_click_enabled: AtomicBool,
+    tabla_row_decay_bits: [AtomicU32; 3],
+    tabla_row_tone_bits: [AtomicU32; 3],
+    tabla_row_noise_bits: [AtomicU32; 3],
+    tabla_glide_bits: AtomicU32,
+    tabla_bayan_tune_bits: AtomicU32,
+    tabla_dayan_tune_bits: AtomicU32,
+
+    trim_handpan_bits: AtomicU32,
+    trim_ding_bits: AtomicU32,
+    trim_waveshape_bits: AtomicU32,
+    trim_tambura_bits: AtomicU32,
+    trim_root_bits: AtomicU32,
+    trim_followers_bits: AtomicU32,
+    trim_fm_bass_bits: AtomicU32,
+    trim_tabla_bits: AtomicU32,
+    trim_echo_bits: AtomicU32,    groove_click_enabled: AtomicBool,
     groove_auto_lock: AtomicBool,
     groove_lock_cmd: AtomicU8,
     groove_bpm_bits: AtomicU32,
@@ -426,6 +511,7 @@ impl ControlBlock {
             release_ms_bits: AtomicU32::new(DEFAULT_RELEASE_MS.to_bits()),
             damping_ratio_bits: AtomicU32::new(DEFAULT_DAMPING_RATIO.to_bits()),
             peak_bits: AtomicU32::new(0.0f32.to_bits()),
+            channel_peak_bits: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
             inharmonicity_bits: AtomicU32::new(DEFAULT_INHARMONICITY.to_bits()),
             position_coupling_bits: AtomicU32::new(DEFAULT_POSITION_COUPLING.to_bits()),
             velocity_coupling_bits: AtomicU32::new(DEFAULT_VELOCITY_COUPLING.to_bits()),
@@ -455,13 +541,18 @@ impl ControlBlock {
             support_drift_bits: AtomicU32::new(DEFAULT_SUPPORT_DRIFT.to_bits()),
             support_motion_bits: AtomicU32::new(DEFAULT_SUPPORT_MOTION.to_bits()),
             support_fade_bits: AtomicU32::new(DEFAULT_SUPPORT_FADE.to_bits()),
+            support_tone_bits: AtomicU32::new(DEFAULT_SUPPORT_TONE.to_bits()),
             reverb_handpan_bits: AtomicU32::new(DEFAULT_REVERB_HANDPAN.to_bits()),
             reverb_support_bits: AtomicU32::new(DEFAULT_REVERB_SUPPORT.to_bits()),
             reverb_ding_bits: AtomicU32::new(DEFAULT_REVERB_DING.to_bits()),
+            reverb_waveshape_bits: AtomicU32::new(DEFAULT_REVERB_WAVESHAPE.to_bits()),
+            reverb_tambura_bits: AtomicU32::new(DEFAULT_REVERB_TAMBURA.to_bits()),
+            reverb_followers_bits: AtomicU32::new(DEFAULT_REVERB_FOLLOWERS.to_bits()),
             reverb_recent_bits: AtomicU32::new(DEFAULT_REVERB_RECENT.to_bits()),
             reverb_second_bits: AtomicU32::new(DEFAULT_REVERB_SECOND.to_bits()),
             reverb_bass_bits: AtomicU32::new(DEFAULT_REVERB_BASS.to_bits()),
             reverb_echo_bits: AtomicU32::new(DEFAULT_REVERB_ECHO.to_bits()),
+            reverb_tabla_bits: AtomicU32::new(DEFAULT_REVERB_TABLA.to_bits()),
             reverb_decay_bits: AtomicU32::new(DEFAULT_REVERB_DECAY.to_bits()),
             reverb_tone_bits: AtomicU32::new(DEFAULT_REVERB_TONE.to_bits()),
             echo_instrument: AtomicU8::new(DEFAULT_ECHO_INSTRUMENT),
@@ -471,6 +562,10 @@ impl ControlBlock {
             wash_solo: AtomicU8::new(0),
             handpan_muted: AtomicBool::new(false),
             handpan_solo: AtomicBool::new(false),
+            bass_muted: AtomicBool::new(false),
+            bass_solo: AtomicBool::new(false),
+            tabla_muted: AtomicBool::new(false),
+            tabla_solo: AtomicBool::new(false),
             reverb_muted: AtomicBool::new(false),
             reverb_solo: AtomicBool::new(false),
             ding_wash: AtomicU8::new(DEFAULT_DING_WASH),
@@ -495,6 +590,7 @@ impl ControlBlock {
             mix_tambura_bits: AtomicU32::new(0.0f32.to_bits()),
             mix_recent_bits: AtomicU32::new(DEFAULT_MIX_LEVEL.to_bits()),
             mix_second_bits: AtomicU32::new(DEFAULT_MIX_LEVEL.to_bits()),
+            mix_followers_bits: AtomicU32::new(DEFAULT_MIX_LEVEL.to_bits()),
             mix_bass_bits: AtomicU32::new(DEFAULT_MIX_LEVEL.to_bits()),
             mix_taps_bits: AtomicU32::new(DEFAULT_MIX_LEVEL.to_bits()),
             mix_reverb_bits: AtomicU32::new(DEFAULT_MIX_LEVEL.to_bits()),
@@ -506,8 +602,11 @@ impl ControlBlock {
             pan_tambura_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
             pan_recent_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
             pan_second_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
+            pan_followers_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
             pan_bass_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
+            pan_fm_bass_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
             pan_echo_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
+            pan_tabla_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
             pan_reverb_bits: AtomicU32::new(DEFAULT_PAN.to_bits()),
             formant_rate_bits: AtomicU32::new(DEFAULT_FORMANT_RATE.to_bits()),
             formant_depth_bits: AtomicU32::new(DEFAULT_FORMANT_DEPTH.to_bits()),
@@ -522,11 +621,35 @@ impl ControlBlock {
             fm_bass_level_bits: AtomicU32::new(DEFAULT_FM_BASS_LEVEL.to_bits()),
             bass_line_amount_bits: AtomicU32::new(DEFAULT_BASS_LINE_AMOUNT.to_bits()),
             bass_line_variation_bits: AtomicU32::new(DEFAULT_BASS_LINE_VARIATION.to_bits()),
+            tabla_line_amount_bits: AtomicU32::new(DEFAULT_TABLA_LINE_AMOUNT.to_bits()),
+            mix_tabla_bits: AtomicU32::new(DEFAULT_MIX_LEVEL.to_bits()),
+            tabla_groove_index: AtomicU8::new(DEFAULT_TABLA_GROOVE_INDEX),
             bells_decay_bits: AtomicU32::new(DEFAULT_BELLS_DECAY.to_bits()),
             bells_ratio_bits: AtomicU32::new(DEFAULT_BELLS_RATIO.to_bits()),
             bells_index_bits: AtomicU32::new(DEFAULT_BELLS_INDEX.to_bits()),
             bells_index_decay_bits: AtomicU32::new(DEFAULT_BELLS_INDEX_DECAY.to_bits()),
-            groove_click_enabled: AtomicBool::new(DEFAULT_GROOVE_CLICK_ENABLED),
+            tabla_row_decay_bits: std::array::from_fn(|i| {
+                AtomicU32::new(DEFAULT_TABLA_ROW_DECAY[i].to_bits())
+            }),
+            tabla_row_tone_bits: std::array::from_fn(|i| {
+                AtomicU32::new(DEFAULT_TABLA_ROW_TONE[i].to_bits())
+            }),
+            tabla_row_noise_bits: std::array::from_fn(|i| {
+                AtomicU32::new(DEFAULT_TABLA_ROW_NOISE[i].to_bits())
+            }),
+            tabla_glide_bits: AtomicU32::new(DEFAULT_TABLA_GLIDE.to_bits()),
+            tabla_bayan_tune_bits: AtomicU32::new(DEFAULT_TABLA_BAYAN_TUNE.to_bits()),
+            tabla_dayan_tune_bits: AtomicU32::new(DEFAULT_TABLA_DAYAN_TUNE.to_bits()),
+
+            trim_handpan_bits: AtomicU32::new(DEFAULT_TRIM.to_bits()),
+            trim_ding_bits: AtomicU32::new(DEFAULT_TRIM.to_bits()),
+            trim_waveshape_bits: AtomicU32::new(DEFAULT_TRIM.to_bits()),
+            trim_tambura_bits: AtomicU32::new(DEFAULT_TRIM.to_bits()),
+            trim_root_bits: AtomicU32::new(DEFAULT_TRIM.to_bits()),
+            trim_followers_bits: AtomicU32::new(DEFAULT_TRIM.to_bits()),
+            trim_fm_bass_bits: AtomicU32::new(DEFAULT_TRIM.to_bits()),
+            trim_tabla_bits: AtomicU32::new(DEFAULT_TRIM.to_bits()),
+            trim_echo_bits: AtomicU32::new(DEFAULT_TRIM.to_bits()),            groove_click_enabled: AtomicBool::new(DEFAULT_GROOVE_CLICK_ENABLED),
             groove_auto_lock: AtomicBool::new(DEFAULT_GROOVE_AUTO_LOCK),
             groove_lock_cmd: AtomicU8::new(GROOVE_LOCK_CMD_NONE),
             groove_bpm_bits: AtomicU32::new(75.0f32.to_bits()),
@@ -606,10 +729,15 @@ impl ControlBlock {
             support_drift: f32::from_bits(self.support_drift_bits.load(Ordering::Relaxed)),
             support_motion: f32::from_bits(self.support_motion_bits.load(Ordering::Relaxed)),
             support_fade: f32::from_bits(self.support_fade_bits.load(Ordering::Relaxed)),
+            support_tone: f32::from_bits(self.support_tone_bits.load(Ordering::Relaxed)),
             reverb_handpan: f32::from_bits(self.reverb_handpan_bits.load(Ordering::Relaxed)),
             reverb_ding: f32::from_bits(self.reverb_ding_bits.load(Ordering::Relaxed)),
+            reverb_waveshape: f32::from_bits(self.reverb_waveshape_bits.load(Ordering::Relaxed)),
+            reverb_tambura: f32::from_bits(self.reverb_tambura_bits.load(Ordering::Relaxed)),
+            reverb_followers: f32::from_bits(self.reverb_followers_bits.load(Ordering::Relaxed)),
             reverb_bass: f32::from_bits(self.reverb_bass_bits.load(Ordering::Relaxed)),
             reverb_echo: f32::from_bits(self.reverb_echo_bits.load(Ordering::Relaxed)),
+            reverb_tabla: f32::from_bits(self.reverb_tabla_bits.load(Ordering::Relaxed)),
             reverb_decay: f32::from_bits(self.reverb_decay_bits.load(Ordering::Relaxed)),
             reverb_tone: f32::from_bits(self.reverb_tone_bits.load(Ordering::Relaxed)),
             echo_instrument: self.echo_instrument.load(Ordering::Relaxed),
@@ -619,6 +747,10 @@ impl ControlBlock {
             wash_solo: self.wash_solo.load(Ordering::Relaxed),
             handpan_muted: self.handpan_muted.load(Ordering::Relaxed),
             handpan_solo: self.handpan_solo.load(Ordering::Relaxed),
+            bass_muted: self.bass_muted.load(Ordering::Relaxed),
+            bass_solo: self.bass_solo.load(Ordering::Relaxed),
+            tabla_muted: self.tabla_muted.load(Ordering::Relaxed),
+            tabla_solo: self.tabla_solo.load(Ordering::Relaxed),
             reverb_muted: self.reverb_muted.load(Ordering::Relaxed),
             reverb_solo: self.reverb_solo.load(Ordering::Relaxed),
             ding_wash: self.ding_wash.load(Ordering::Relaxed),
@@ -642,6 +774,7 @@ impl ControlBlock {
             mix_tambura: f32::from_bits(self.mix_tambura_bits.load(Ordering::Relaxed)),
             mix_recent: f32::from_bits(self.mix_recent_bits.load(Ordering::Relaxed)),
             mix_second: f32::from_bits(self.mix_second_bits.load(Ordering::Relaxed)),
+            mix_followers: f32::from_bits(self.mix_followers_bits.load(Ordering::Relaxed)),
             mix_bass: f32::from_bits(self.mix_bass_bits.load(Ordering::Relaxed)),
             mix_taps: f32::from_bits(self.mix_taps_bits.load(Ordering::Relaxed)),
             mix_reverb: f32::from_bits(self.mix_reverb_bits.load(Ordering::Relaxed)),
@@ -651,10 +784,11 @@ impl ControlBlock {
             pan_ding: f32::from_bits(self.pan_ding_bits.load(Ordering::Relaxed)),
             pan_waveshape: f32::from_bits(self.pan_waveshape_bits.load(Ordering::Relaxed)),
             pan_tambura: f32::from_bits(self.pan_tambura_bits.load(Ordering::Relaxed)),
-            pan_recent: f32::from_bits(self.pan_recent_bits.load(Ordering::Relaxed)),
-            pan_second: f32::from_bits(self.pan_second_bits.load(Ordering::Relaxed)),
+            pan_followers: f32::from_bits(self.pan_followers_bits.load(Ordering::Relaxed)),
             pan_bass: f32::from_bits(self.pan_bass_bits.load(Ordering::Relaxed)),
+            pan_fm_bass: f32::from_bits(self.pan_fm_bass_bits.load(Ordering::Relaxed)),
             pan_echo: f32::from_bits(self.pan_echo_bits.load(Ordering::Relaxed)),
+            pan_tabla: f32::from_bits(self.pan_tabla_bits.load(Ordering::Relaxed)),
             pan_reverb: f32::from_bits(self.pan_reverb_bits.load(Ordering::Relaxed)),
             formant_rate: f32::from_bits(self.formant_rate_bits.load(Ordering::Relaxed)),
             formant_depth: f32::from_bits(self.formant_depth_bits.load(Ordering::Relaxed)),
@@ -677,10 +811,34 @@ impl ControlBlock {
             bass_line_variation: f32::from_bits(
                 self.bass_line_variation_bits.load(Ordering::Relaxed),
             ),
+            tabla_line_amount: f32::from_bits(self.tabla_line_amount_bits.load(Ordering::Relaxed)),
+            mix_tabla: f32::from_bits(self.mix_tabla_bits.load(Ordering::Relaxed)),
+            tabla_groove_index: self.tabla_groove_index.load(Ordering::Relaxed),
             bells_decay: f32::from_bits(self.bells_decay_bits.load(Ordering::Relaxed)),
             bells_ratio: f32::from_bits(self.bells_ratio_bits.load(Ordering::Relaxed)),
             bells_index: f32::from_bits(self.bells_index_bits.load(Ordering::Relaxed)),
             bells_index_decay: f32::from_bits(self.bells_index_decay_bits.load(Ordering::Relaxed)),
+            tabla_row_decay: std::array::from_fn(|i| {
+                f32::from_bits(self.tabla_row_decay_bits[i].load(Ordering::Relaxed))
+            }),
+            tabla_row_tone: std::array::from_fn(|i| {
+                f32::from_bits(self.tabla_row_tone_bits[i].load(Ordering::Relaxed))
+            }),
+            tabla_row_noise: std::array::from_fn(|i| {
+                f32::from_bits(self.tabla_row_noise_bits[i].load(Ordering::Relaxed))
+            }),
+            tabla_glide: f32::from_bits(self.tabla_glide_bits.load(Ordering::Relaxed)),
+            tabla_bayan_tune: f32::from_bits(self.tabla_bayan_tune_bits.load(Ordering::Relaxed)),
+            tabla_dayan_tune: f32::from_bits(self.tabla_dayan_tune_bits.load(Ordering::Relaxed)),
+            trim_handpan: f32::from_bits(self.trim_handpan_bits.load(Ordering::Relaxed)),
+            trim_ding: f32::from_bits(self.trim_ding_bits.load(Ordering::Relaxed)),
+            trim_waveshape: f32::from_bits(self.trim_waveshape_bits.load(Ordering::Relaxed)),
+            trim_tambura: f32::from_bits(self.trim_tambura_bits.load(Ordering::Relaxed)),
+            trim_root: f32::from_bits(self.trim_root_bits.load(Ordering::Relaxed)),
+            trim_followers: f32::from_bits(self.trim_followers_bits.load(Ordering::Relaxed)),
+            trim_fm_bass: f32::from_bits(self.trim_fm_bass_bits.load(Ordering::Relaxed)),
+            trim_tabla: f32::from_bits(self.trim_tabla_bits.load(Ordering::Relaxed)),
+            trim_echo: f32::from_bits(self.trim_echo_bits.load(Ordering::Relaxed)),
             groove_click_enabled: self.groove_click_enabled.load(Ordering::Relaxed),
             groove_auto_lock: self.groove_auto_lock.load(Ordering::Relaxed),
             groove_lock_cmd: self
@@ -698,6 +856,16 @@ impl ControlBlock {
             EchoInstrument::from_u8(instrument).as_u8(),
             Ordering::Relaxed,
         );
+    }
+
+    pub(crate) fn tabla_groove_index(&self) -> u8 {
+        self.tabla_groove_index.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_tabla_groove_index(&self, index: u8) {
+        let max = (GROOVES.len().saturating_sub(1)) as u8;
+        self.tabla_groove_index
+            .store(index.min(max), Ordering::Relaxed);
     }
 
     pub(crate) fn groove_click_enabled(&self) -> bool {
@@ -810,6 +978,32 @@ impl ControlBlock {
     pub(crate) fn set_handpan_mute_solo(&self, muted: bool, solo: bool) {
         self.handpan_muted.store(muted, Ordering::Relaxed);
         self.handpan_solo.store(solo, Ordering::Relaxed);
+    }
+
+    pub(crate) fn bass_muted(&self) -> bool {
+        self.bass_muted.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn bass_solo(&self) -> bool {
+        self.bass_solo.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_bass_mute_solo(&self, muted: bool, solo: bool) {
+        self.bass_muted.store(muted, Ordering::Relaxed);
+        self.bass_solo.store(solo, Ordering::Relaxed);
+    }
+
+    pub(crate) fn tabla_muted(&self) -> bool {
+        self.tabla_muted.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn tabla_solo(&self) -> bool {
+        self.tabla_solo.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_tabla_mute_solo(&self, muted: bool, solo: bool) {
+        self.tabla_muted.store(muted, Ordering::Relaxed);
+        self.tabla_solo.store(solo, Ordering::Relaxed);
     }
 
     pub(crate) fn reverb_muted(&self) -> bool {
@@ -1075,6 +1269,28 @@ impl ControlBlock {
     }
 
     #[inline]
+    pub(crate) fn channel_peak(&self, channel: MixChannel) -> f32 {
+        f32::from_bits(self.channel_peak_bits[channel as usize].load(Ordering::Relaxed))
+    }
+
+    #[inline]
+    fn update_channel_peaks(&self, block_peaks: &[f32; MIX_CHANNEL_COUNT], block_duration_s: f32) {
+        let decay = if block_duration_s <= 0.0 {
+            0.0
+        } else {
+            (-block_duration_s / PEAK_DECAY_TAU).exp()
+        };
+        for (index, &block_peak) in block_peaks.iter().enumerate() {
+            if !block_peak.is_finite() {
+                continue;
+            }
+            let current = f32::from_bits(self.channel_peak_bits[index].load(Ordering::Relaxed));
+            let next = block_peak.max(current * decay).clamp(0.0, 1.5);
+            self.channel_peak_bits[index].store(next.to_bits(), Ordering::Relaxed);
+        }
+    }
+
+    #[inline]
     fn parameter_value(&self, id: ParameterId) -> f32 {
         match id {
             ParameterId::AttackMs => self.attack_ms(),
@@ -1158,6 +1374,9 @@ impl ControlBlock {
             ParameterId::ReverbEcho => {
                 f32::from_bits(self.reverb_echo_bits.load(Ordering::Relaxed))
             }
+            ParameterId::ReverbTabla => {
+                f32::from_bits(self.reverb_tabla_bits.load(Ordering::Relaxed))
+            }
             ParameterId::ReverbDecay => {
                 f32::from_bits(self.reverb_decay_bits.load(Ordering::Relaxed))
             }
@@ -1213,6 +1432,9 @@ impl ControlBlock {
             }
             ParameterId::MixRecent => f32::from_bits(self.mix_recent_bits.load(Ordering::Relaxed)),
             ParameterId::MixSecond => f32::from_bits(self.mix_second_bits.load(Ordering::Relaxed)),
+            ParameterId::MixFollowers => {
+                f32::from_bits(self.mix_followers_bits.load(Ordering::Relaxed))
+            }
             ParameterId::MixBass => f32::from_bits(self.mix_bass_bits.load(Ordering::Relaxed)),
             ParameterId::MixTaps => f32::from_bits(self.mix_taps_bits.load(Ordering::Relaxed)),
             ParameterId::MixReverb => f32::from_bits(self.mix_reverb_bits.load(Ordering::Relaxed)),
@@ -1234,8 +1456,13 @@ impl ControlBlock {
             }
             ParameterId::PanRecent => f32::from_bits(self.pan_recent_bits.load(Ordering::Relaxed)),
             ParameterId::PanSecond => f32::from_bits(self.pan_second_bits.load(Ordering::Relaxed)),
+            ParameterId::PanFollowers => {
+                f32::from_bits(self.pan_followers_bits.load(Ordering::Relaxed))
+            }
             ParameterId::PanBass => f32::from_bits(self.pan_bass_bits.load(Ordering::Relaxed)),
+            ParameterId::PanFmBass => f32::from_bits(self.pan_fm_bass_bits.load(Ordering::Relaxed)),
             ParameterId::PanEcho => f32::from_bits(self.pan_echo_bits.load(Ordering::Relaxed)),
+            ParameterId::PanTabla => f32::from_bits(self.pan_tabla_bits.load(Ordering::Relaxed)),
             ParameterId::PanReverb => f32::from_bits(self.pan_reverb_bits.load(Ordering::Relaxed)),
             ParameterId::FormantRate => {
                 f32::from_bits(self.formant_rate_bits.load(Ordering::Relaxed))
@@ -1276,6 +1503,10 @@ impl ControlBlock {
             ParameterId::BassLineVariation => {
                 f32::from_bits(self.bass_line_variation_bits.load(Ordering::Relaxed))
             }
+            ParameterId::TablaLineAmount => {
+                f32::from_bits(self.tabla_line_amount_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::MixTabla => f32::from_bits(self.mix_tabla_bits.load(Ordering::Relaxed)),
             ParameterId::BellsDecay => {
                 f32::from_bits(self.bells_decay_bits.load(Ordering::Relaxed))
             }
@@ -1287,6 +1518,81 @@ impl ControlBlock {
             }
             ParameterId::BellsIndexDecay => {
                 f32::from_bits(self.bells_index_decay_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::TablaCenterDecay => {
+                f32::from_bits(self.tabla_row_decay_bits[0].load(Ordering::Relaxed))
+            }
+            ParameterId::TablaCenterTone => {
+                f32::from_bits(self.tabla_row_tone_bits[0].load(Ordering::Relaxed))
+            }
+            ParameterId::TablaCenterNoise => {
+                f32::from_bits(self.tabla_row_noise_bits[0].load(Ordering::Relaxed))
+            }
+            ParameterId::TablaBetweenDecay => {
+                f32::from_bits(self.tabla_row_decay_bits[1].load(Ordering::Relaxed))
+            }
+            ParameterId::TablaBetweenTone => {
+                f32::from_bits(self.tabla_row_tone_bits[1].load(Ordering::Relaxed))
+            }
+            ParameterId::TablaBetweenNoise => {
+                f32::from_bits(self.tabla_row_noise_bits[1].load(Ordering::Relaxed))
+            }
+            ParameterId::TablaShoulderDecay => {
+                f32::from_bits(self.tabla_row_decay_bits[2].load(Ordering::Relaxed))
+            }
+            ParameterId::TablaShoulderTone => {
+                f32::from_bits(self.tabla_row_tone_bits[2].load(Ordering::Relaxed))
+            }
+            ParameterId::TablaShoulderNoise => {
+                f32::from_bits(self.tabla_row_noise_bits[2].load(Ordering::Relaxed))
+            }
+            ParameterId::TablaGlide => {
+                f32::from_bits(self.tabla_glide_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::TablaBayanTune => {
+                f32::from_bits(self.tabla_bayan_tune_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::TablaDayanTune => {
+                f32::from_bits(self.tabla_dayan_tune_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::SupportTone => {
+                f32::from_bits(self.support_tone_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::ReverbWaveshape => {
+                f32::from_bits(self.reverb_waveshape_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::ReverbTambura => {
+                f32::from_bits(self.reverb_tambura_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::ReverbFollowers => {
+                f32::from_bits(self.reverb_followers_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::TrimHandpan => {
+                f32::from_bits(self.trim_handpan_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::TrimDing => {
+                f32::from_bits(self.trim_ding_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::TrimWaveshape => {
+                f32::from_bits(self.trim_waveshape_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::TrimTambura => {
+                f32::from_bits(self.trim_tambura_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::TrimRoot => {
+                f32::from_bits(self.trim_root_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::TrimFollowers => {
+                f32::from_bits(self.trim_followers_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::TrimFmBass => {
+                f32::from_bits(self.trim_fm_bass_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::TrimTabla => {
+                f32::from_bits(self.trim_tabla_bits.load(Ordering::Relaxed))
+            }
+            ParameterId::TrimEcho => {
+                f32::from_bits(self.trim_echo_bits.load(Ordering::Relaxed))
             }
         }
     }
@@ -1358,10 +1664,13 @@ impl ControlBlock {
                 .reverb_handpan_bits
                 .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::ReverbSupport => {
-                // Old MIDI maps still land here; keep the four voice sends in step.
+                // Old MIDI maps still land here; keep pad / follower sends in step.
                 let bits = value.to_bits();
                 self.reverb_support_bits.store(bits, Ordering::Relaxed);
                 self.reverb_ding_bits.store(bits, Ordering::Relaxed);
+                self.reverb_waveshape_bits.store(bits, Ordering::Relaxed);
+                self.reverb_tambura_bits.store(bits, Ordering::Relaxed);
+                self.reverb_followers_bits.store(bits, Ordering::Relaxed);
                 self.reverb_recent_bits.store(bits, Ordering::Relaxed);
                 self.reverb_second_bits.store(bits, Ordering::Relaxed);
                 self.reverb_bass_bits.store(bits, Ordering::Relaxed);
@@ -1380,6 +1689,9 @@ impl ControlBlock {
                 .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::ReverbEcho => self
                 .reverb_echo_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::ReverbTabla => self
+                .reverb_tabla_bits
                 .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::ReverbDecay => self
                 .reverb_decay_bits
@@ -1442,6 +1754,9 @@ impl ControlBlock {
             ParameterId::MixSecond => self
                 .mix_second_bits
                 .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::MixFollowers => self
+                .mix_followers_bits
+                .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::MixBass => self.mix_bass_bits.store(value.to_bits(), Ordering::Relaxed),
             ParameterId::MixTaps => self.mix_taps_bits.store(value.to_bits(), Ordering::Relaxed),
             ParameterId::MixReverb => self
@@ -1469,8 +1784,15 @@ impl ControlBlock {
             ParameterId::PanSecond => self
                 .pan_second_bits
                 .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::PanFollowers => self
+                .pan_followers_bits
+                .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::PanBass => self.pan_bass_bits.store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::PanFmBass => self
+                .pan_fm_bass_bits
+                .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::PanEcho => self.pan_echo_bits.store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::PanTabla => self.pan_tabla_bits.store(value.to_bits(), Ordering::Relaxed),
             ParameterId::PanReverb => self
                 .pan_reverb_bits
                 .store(value.to_bits(), Ordering::Relaxed),
@@ -1513,6 +1835,10 @@ impl ControlBlock {
             ParameterId::BassLineVariation => self
                 .bass_line_variation_bits
                 .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TablaLineAmount => self
+                .tabla_line_amount_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::MixTabla => self.mix_tabla_bits.store(value.to_bits(), Ordering::Relaxed),
             ParameterId::BellsDecay => self
                 .bells_decay_bits
                 .store(value.to_bits(), Ordering::Relaxed),
@@ -1524,6 +1850,72 @@ impl ControlBlock {
                 .store(value.to_bits(), Ordering::Relaxed),
             ParameterId::BellsIndexDecay => self
                 .bells_index_decay_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TablaCenterDecay => self.tabla_row_decay_bits[0]
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TablaCenterTone => self.tabla_row_tone_bits[0]
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TablaCenterNoise => self.tabla_row_noise_bits[0]
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TablaBetweenDecay => self.tabla_row_decay_bits[1]
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TablaBetweenTone => self.tabla_row_tone_bits[1]
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TablaBetweenNoise => self.tabla_row_noise_bits[1]
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TablaShoulderDecay => self.tabla_row_decay_bits[2]
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TablaShoulderTone => self.tabla_row_tone_bits[2]
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TablaShoulderNoise => self.tabla_row_noise_bits[2]
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TablaGlide => self
+                .tabla_glide_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TablaBayanTune => self
+                .tabla_bayan_tune_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TablaDayanTune => self
+                .tabla_dayan_tune_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::SupportTone => self
+                .support_tone_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::ReverbWaveshape => self
+                .reverb_waveshape_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::ReverbTambura => self
+                .reverb_tambura_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::ReverbFollowers => self
+                .reverb_followers_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TrimHandpan => self
+                .trim_handpan_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TrimDing => self
+                .trim_ding_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TrimWaveshape => self
+                .trim_waveshape_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TrimTambura => self
+                .trim_tambura_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TrimRoot => self
+                .trim_root_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TrimFollowers => self
+                .trim_followers_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TrimFmBass => self
+                .trim_fm_bass_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TrimTabla => self
+                .trim_tabla_bits
+                .store(value.to_bits(), Ordering::Relaxed),
+            ParameterId::TrimEcho => self
+                .trim_echo_bits
                 .store(value.to_bits(), Ordering::Relaxed),
         }
     }
@@ -1564,19 +1956,26 @@ impl ControlBlock {
         self.set_parameter_value(ParameterId::SupportDrift, DEFAULT_SUPPORT_DRIFT);
         self.set_parameter_value(ParameterId::SupportMotion, DEFAULT_SUPPORT_MOTION);
         self.set_parameter_value(ParameterId::SupportFade, DEFAULT_SUPPORT_FADE);
+        self.set_parameter_value(ParameterId::SupportTone, DEFAULT_SUPPORT_TONE);
         self.set_parameter_value(ParameterId::ReverbHandpan, DEFAULT_REVERB_HANDPAN);
         self.set_parameter_value(ParameterId::ReverbSupport, DEFAULT_REVERB_SUPPORT);
         self.set_parameter_value(ParameterId::ReverbDing, DEFAULT_REVERB_DING);
+        self.set_parameter_value(ParameterId::ReverbWaveshape, DEFAULT_REVERB_WAVESHAPE);
+        self.set_parameter_value(ParameterId::ReverbTambura, DEFAULT_REVERB_TAMBURA);
+        self.set_parameter_value(ParameterId::ReverbFollowers, DEFAULT_REVERB_FOLLOWERS);
         self.set_parameter_value(ParameterId::ReverbRecent, DEFAULT_REVERB_RECENT);
         self.set_parameter_value(ParameterId::ReverbSecond, DEFAULT_REVERB_SECOND);
         self.set_parameter_value(ParameterId::ReverbBass, DEFAULT_REVERB_BASS);
         self.set_parameter_value(ParameterId::ReverbEcho, DEFAULT_REVERB_ECHO);
+        self.set_parameter_value(ParameterId::ReverbTabla, DEFAULT_REVERB_TABLA);
         self.set_parameter_value(ParameterId::ReverbDecay, DEFAULT_REVERB_DECAY);
         self.set_parameter_value(ParameterId::ReverbTone, DEFAULT_REVERB_TONE);
         self.set_echo_instrument_u8(DEFAULT_ECHO_INSTRUMENT);
         self.set_support_parts(0, 0);
         self.set_wash_parts(0, 0);
         self.set_handpan_mute_solo(false, false);
+        self.set_bass_mute_solo(false, false);
+        self.set_tabla_mute_solo(false, false);
         self.set_reverb_mute_solo(false, false);
         self.set_ding_wash(DEFAULT_DING_WASH);
         self.set_parameter_value(ParameterId::DingShape, DEFAULT_DING_SHAPE);
@@ -1600,6 +1999,7 @@ impl ControlBlock {
         self.set_parameter_value(ParameterId::MixTambura, 0.0);
         self.set_parameter_value(ParameterId::MixRecent, DEFAULT_MIX_LEVEL);
         self.set_parameter_value(ParameterId::MixSecond, DEFAULT_MIX_LEVEL);
+        self.set_parameter_value(ParameterId::MixFollowers, DEFAULT_MIX_LEVEL);
         self.set_parameter_value(ParameterId::MixBass, DEFAULT_MIX_LEVEL);
         self.set_parameter_value(ParameterId::MixTaps, DEFAULT_MIX_LEVEL);
         self.set_parameter_value(ParameterId::MixReverb, DEFAULT_MIX_LEVEL);
@@ -1611,8 +2011,11 @@ impl ControlBlock {
         self.set_parameter_value(ParameterId::PanTambura, DEFAULT_PAN);
         self.set_parameter_value(ParameterId::PanRecent, DEFAULT_PAN);
         self.set_parameter_value(ParameterId::PanSecond, DEFAULT_PAN);
+        self.set_parameter_value(ParameterId::PanFollowers, DEFAULT_PAN);
         self.set_parameter_value(ParameterId::PanBass, DEFAULT_PAN);
+        self.set_parameter_value(ParameterId::PanFmBass, DEFAULT_PAN);
         self.set_parameter_value(ParameterId::PanEcho, DEFAULT_PAN);
+        self.set_parameter_value(ParameterId::PanTabla, DEFAULT_PAN);
         self.set_parameter_value(ParameterId::PanReverb, DEFAULT_PAN);
         self.set_parameter_value(ParameterId::FormantRate, DEFAULT_FORMANT_RATE);
         self.set_parameter_value(ParameterId::FormantDepth, DEFAULT_FORMANT_DEPTH);
@@ -1627,10 +2030,45 @@ impl ControlBlock {
         self.set_parameter_value(ParameterId::FmBassLevel, DEFAULT_FM_BASS_LEVEL);
         self.set_parameter_value(ParameterId::BassLineAmount, DEFAULT_BASS_LINE_AMOUNT);
         self.set_parameter_value(ParameterId::BassLineVariation, DEFAULT_BASS_LINE_VARIATION);
+        self.set_parameter_value(ParameterId::TablaLineAmount, DEFAULT_TABLA_LINE_AMOUNT);
+        self.set_parameter_value(ParameterId::MixTabla, DEFAULT_MIX_LEVEL);
+        self.set_tabla_groove_index(DEFAULT_TABLA_GROOVE_INDEX);
         self.set_parameter_value(ParameterId::BellsDecay, DEFAULT_BELLS_DECAY);
         self.set_parameter_value(ParameterId::BellsRatio, DEFAULT_BELLS_RATIO);
         self.set_parameter_value(ParameterId::BellsIndex, DEFAULT_BELLS_INDEX);
         self.set_parameter_value(ParameterId::BellsIndexDecay, DEFAULT_BELLS_INDEX_DECAY);
+        for i in 0..TABLA_ROWS {
+            let decay = match i {
+                0 => ParameterId::TablaCenterDecay,
+                1 => ParameterId::TablaBetweenDecay,
+                _ => ParameterId::TablaShoulderDecay,
+            };
+            let tone = match i {
+                0 => ParameterId::TablaCenterTone,
+                1 => ParameterId::TablaBetweenTone,
+                _ => ParameterId::TablaShoulderTone,
+            };
+            let noise = match i {
+                0 => ParameterId::TablaCenterNoise,
+                1 => ParameterId::TablaBetweenNoise,
+                _ => ParameterId::TablaShoulderNoise,
+            };
+            self.set_parameter_value(decay, DEFAULT_TABLA_ROW_DECAY[i]);
+            self.set_parameter_value(tone, DEFAULT_TABLA_ROW_TONE[i]);
+            self.set_parameter_value(noise, DEFAULT_TABLA_ROW_NOISE[i]);
+        }
+        self.set_parameter_value(ParameterId::TablaGlide, DEFAULT_TABLA_GLIDE);
+        self.set_parameter_value(ParameterId::TablaBayanTune, DEFAULT_TABLA_BAYAN_TUNE);
+        self.set_parameter_value(ParameterId::TablaDayanTune, DEFAULT_TABLA_DAYAN_TUNE);
+        self.set_parameter_value(ParameterId::TrimHandpan, DEFAULT_TRIM);
+        self.set_parameter_value(ParameterId::TrimDing, DEFAULT_TRIM);
+        self.set_parameter_value(ParameterId::TrimWaveshape, DEFAULT_TRIM);
+        self.set_parameter_value(ParameterId::TrimTambura, DEFAULT_TRIM);
+        self.set_parameter_value(ParameterId::TrimRoot, DEFAULT_TRIM);
+        self.set_parameter_value(ParameterId::TrimFollowers, DEFAULT_TRIM);
+        self.set_parameter_value(ParameterId::TrimFmBass, DEFAULT_TRIM);
+        self.set_parameter_value(ParameterId::TrimTabla, DEFAULT_TRIM);
+        self.set_parameter_value(ParameterId::TrimEcho, DEFAULT_TRIM);
         self.set_groove_click_enabled(DEFAULT_GROOVE_CLICK_ENABLED);
         self.set_groove_auto_lock(DEFAULT_GROOVE_AUTO_LOCK);
         self.request_groove_unlock();
@@ -1708,10 +2146,15 @@ struct ControlSnapshot {
     support_drift: f32,
     support_motion: f32,
     support_fade: f32,
+    support_tone: f32,
     reverb_handpan: f32,
     reverb_ding: f32,
+    reverb_waveshape: f32,
+    reverb_tambura: f32,
+    reverb_followers: f32,
     reverb_bass: f32,
     reverb_echo: f32,
+    reverb_tabla: f32,
     reverb_decay: f32,
     reverb_tone: f32,
     echo_instrument: u8,
@@ -1721,6 +2164,10 @@ struct ControlSnapshot {
     wash_solo: u8,
     handpan_muted: bool,
     handpan_solo: bool,
+    bass_muted: bool,
+    bass_solo: bool,
+    tabla_muted: bool,
+    tabla_solo: bool,
     reverb_muted: bool,
     reverb_solo: bool,
     ding_wash: u8,
@@ -1744,6 +2191,7 @@ struct ControlSnapshot {
     mix_tambura: f32,
     mix_recent: f32,
     mix_second: f32,
+    mix_followers: f32,
     mix_bass: f32,
     mix_taps: f32,
     mix_reverb: f32,
@@ -1753,10 +2201,11 @@ struct ControlSnapshot {
     pan_ding: f32,
     pan_waveshape: f32,
     pan_tambura: f32,
-    pan_recent: f32,
-    pan_second: f32,
+    pan_followers: f32,
     pan_bass: f32,
+    pan_fm_bass: f32,
     pan_echo: f32,
+    pan_tabla: f32,
     pan_reverb: f32,
     formant_rate: f32,
     formant_depth: f32,
@@ -1771,10 +2220,28 @@ struct ControlSnapshot {
     fm_bass_level: f32,
     bass_line_amount: f32,
     bass_line_variation: f32,
+    tabla_line_amount: f32,
+    mix_tabla: f32,
+    tabla_groove_index: u8,
     bells_decay: f32,
     bells_ratio: f32,
     bells_index: f32,
     bells_index_decay: f32,
+    tabla_row_decay: [f32; 3],
+    tabla_row_tone: [f32; 3],
+    tabla_row_noise: [f32; 3],
+    tabla_glide: f32,
+    tabla_bayan_tune: f32,
+    tabla_dayan_tune: f32,
+    trim_handpan: f32,
+    trim_ding: f32,
+    trim_waveshape: f32,
+    trim_tambura: f32,
+    trim_root: f32,
+    trim_followers: f32,
+    trim_fm_bass: f32,
+    trim_tabla: f32,
+    trim_echo: f32,
     groove_click_enabled: bool,
     groove_auto_lock: bool,
     groove_lock_cmd: u8,
@@ -1810,13 +2277,18 @@ pub enum ParameterId {
     SupportDrift,
     SupportMotion,
     SupportFade,
+    SupportTone,
     ReverbHandpan,
     ReverbSupport,
     ReverbDing,
+    ReverbWaveshape,
+    ReverbTambura,
+    ReverbFollowers,
     ReverbRecent,
     ReverbSecond,
     ReverbBass,
     ReverbEcho,
+    ReverbTabla,
     ReverbDecay,
     ReverbTone,
     DingShape,
@@ -1840,6 +2312,7 @@ pub enum ParameterId {
     MixTambura,
     MixRecent,
     MixSecond,
+    MixFollowers,
     MixBass,
     MixTaps,
     MixReverb,
@@ -1851,8 +2324,11 @@ pub enum ParameterId {
     PanTambura,
     PanRecent,
     PanSecond,
+    PanFollowers,
     PanBass,
+    PanFmBass,
     PanEcho,
+    PanTabla,
     PanReverb,
     FormantRate,
     FormantDepth,
@@ -1867,10 +2343,33 @@ pub enum ParameterId {
     FmBassLevel,
     BassLineAmount,
     BassLineVariation,
+    TablaLineAmount,
+    MixTabla,
     BellsDecay,
     BellsRatio,
     BellsIndex,
     BellsIndexDecay,
+    TablaCenterDecay,
+    TablaCenterTone,
+    TablaCenterNoise,
+    TablaBetweenDecay,
+    TablaBetweenTone,
+    TablaBetweenNoise,
+    TablaShoulderDecay,
+    TablaShoulderTone,
+    TablaShoulderNoise,
+    TablaGlide,
+    TablaBayanTune,
+    TablaDayanTune,
+    TrimHandpan,
+    TrimDing,
+    TrimWaveshape,
+    TrimTambura,
+    TrimRoot,
+    TrimFollowers,
+    TrimFmBass,
+    TrimTabla,
+    TrimEcho,
 }
 
 const MODAL_PARAMETERS: [ParameterId; 12] = [
@@ -1901,6 +2400,22 @@ const BELLS_PARAMETERS: [ParameterId; 4] = [
     ParameterId::BellsRatio,
     ParameterId::BellsIndex,
     ParameterId::BellsIndexDecay,
+];
+
+const TABLA_CENTER_PARAMETERS: [ParameterId; 3] = [
+    ParameterId::TablaCenterDecay,
+    ParameterId::TablaCenterTone,
+    ParameterId::TablaCenterNoise,
+];
+const TABLA_BETWEEN_PARAMETERS: [ParameterId; 3] = [
+    ParameterId::TablaBetweenDecay,
+    ParameterId::TablaBetweenTone,
+    ParameterId::TablaBetweenNoise,
+];
+const TABLA_SHOULDER_PARAMETERS: [ParameterId; 3] = [
+    ParameterId::TablaShoulderDecay,
+    ParameterId::TablaShoulderTone,
+    ParameterId::TablaShoulderNoise,
 ];
 
 const HANDPAN_PARAMETERS: [ParameterId; 9] = [
@@ -2000,6 +2515,9 @@ impl ParameterId {
             ParameterId::PanReverb => 86,
             ParameterId::PanWaveshape => 87,
             ParameterId::PanTambura => 88,
+            ParameterId::MixFollowers => 89,
+            ParameterId::PanFollowers => 90,
+            ParameterId::PanFmBass => 91,
             ParameterId::DingFormant1 => 36,
             ParameterId::DingFormant2 => 37,
             ParameterId::DingFormant3 => 38,
@@ -2028,6 +2546,8 @@ impl ParameterId {
             ParameterId::ReverbBass => 60,
             ParameterId::PanEcho => 61,
             ParameterId::ReverbEcho => 62,
+            ParameterId::PanTabla => 106,
+            ParameterId::ReverbTabla => 107,
             ParameterId::GrooveSensitivity => 63,
             ParameterId::GroovePhasePull => 64,
             ParameterId::GrooveClickLevel => 65,
@@ -2039,10 +2559,37 @@ impl ParameterId {
             ParameterId::FmBassLevel => 70,
             ParameterId::BassLineAmount => 73,
             ParameterId::BassLineVariation => 74,
+            ParameterId::TablaLineAmount => 104,
+            ParameterId::MixTabla => 105,
             ParameterId::BellsDecay => 75,
             ParameterId::BellsRatio => 76,
             ParameterId::BellsIndex => 77,
             ParameterId::BellsIndexDecay => 78,
+            ParameterId::TablaCenterDecay => 92,
+            ParameterId::TablaCenterTone => 93,
+            ParameterId::TablaGlide => 94,
+            ParameterId::TablaBayanTune => 95,
+            ParameterId::TablaDayanTune => 96,
+            ParameterId::TablaCenterNoise => 97,
+            ParameterId::TablaBetweenDecay => 98,
+            ParameterId::TablaBetweenTone => 99,
+            ParameterId::TablaBetweenNoise => 100,
+            ParameterId::TablaShoulderDecay => 101,
+            ParameterId::TablaShoulderTone => 102,
+            ParameterId::TablaShoulderNoise => 103,
+            ParameterId::SupportTone => 111,
+            ParameterId::ReverbWaveshape => 108,
+            ParameterId::ReverbTambura => 109,
+            ParameterId::ReverbFollowers => 110,
+            ParameterId::TrimHandpan => 112,
+            ParameterId::TrimDing => 113,
+            ParameterId::TrimWaveshape => 114,
+            ParameterId::TrimTambura => 115,
+            ParameterId::TrimRoot => 116,
+            ParameterId::TrimFollowers => 117,
+            ParameterId::TrimFmBass => 118,
+            ParameterId::TrimTabla => 119,
+            ParameterId::TrimEcho => 120,
         }
     }
 
@@ -2094,6 +2641,9 @@ impl ParameterId {
             86 => Some(ParameterId::PanReverb),
             87 => Some(ParameterId::PanWaveshape),
             88 => Some(ParameterId::PanTambura),
+            89 => Some(ParameterId::MixFollowers),
+            90 => Some(ParameterId::PanFollowers),
+            91 => Some(ParameterId::PanFmBass),
             36 => Some(ParameterId::DingFormant1),
             37 => Some(ParameterId::DingFormant2),
             38 => Some(ParameterId::DingFormant3),
@@ -2122,6 +2672,8 @@ impl ParameterId {
             60 => Some(ParameterId::ReverbBass),
             61 => Some(ParameterId::PanEcho),
             62 => Some(ParameterId::ReverbEcho),
+            106 => Some(ParameterId::PanTabla),
+            107 => Some(ParameterId::ReverbTabla),
             63 => Some(ParameterId::GrooveSensitivity),
             64 => Some(ParameterId::GroovePhasePull),
             65 => Some(ParameterId::GrooveClickLevel),
@@ -2133,10 +2685,37 @@ impl ParameterId {
             72 => Some(ParameterId::FmBassFeedback),
             73 => Some(ParameterId::BassLineAmount),
             74 => Some(ParameterId::BassLineVariation),
+            104 => Some(ParameterId::TablaLineAmount),
+            105 => Some(ParameterId::MixTabla),
             75 => Some(ParameterId::BellsDecay),
             76 => Some(ParameterId::BellsRatio),
             77 => Some(ParameterId::BellsIndex),
             78 => Some(ParameterId::BellsIndexDecay),
+            92 => Some(ParameterId::TablaCenterDecay),
+            93 => Some(ParameterId::TablaCenterTone),
+            94 => Some(ParameterId::TablaGlide),
+            95 => Some(ParameterId::TablaBayanTune),
+            96 => Some(ParameterId::TablaDayanTune),
+            97 => Some(ParameterId::TablaCenterNoise),
+            98 => Some(ParameterId::TablaBetweenDecay),
+            99 => Some(ParameterId::TablaBetweenTone),
+            100 => Some(ParameterId::TablaBetweenNoise),
+            101 => Some(ParameterId::TablaShoulderDecay),
+            102 => Some(ParameterId::TablaShoulderTone),
+            103 => Some(ParameterId::TablaShoulderNoise),
+            111 => Some(ParameterId::SupportTone),
+            108 => Some(ParameterId::ReverbWaveshape),
+            109 => Some(ParameterId::ReverbTambura),
+            110 => Some(ParameterId::ReverbFollowers),
+            112 => Some(ParameterId::TrimHandpan),
+            113 => Some(ParameterId::TrimDing),
+            114 => Some(ParameterId::TrimWaveshape),
+            115 => Some(ParameterId::TrimTambura),
+            116 => Some(ParameterId::TrimRoot),
+            117 => Some(ParameterId::TrimFollowers),
+            118 => Some(ParameterId::TrimFmBass),
+            119 => Some(ParameterId::TrimTabla),
+            120 => Some(ParameterId::TrimEcho),
             _ => None,
         }
     }
@@ -2155,6 +2734,18 @@ impl ParameterId {
 
     pub(crate) fn bells() -> &'static [ParameterId] {
         &BELLS_PARAMETERS
+    }
+
+    pub(crate) fn tabla_center() -> &'static [ParameterId] {
+        &TABLA_CENTER_PARAMETERS
+    }
+
+    pub(crate) fn tabla_between() -> &'static [ParameterId] {
+        &TABLA_BETWEEN_PARAMETERS
+    }
+
+    pub(crate) fn tabla_shoulder() -> &'static [ParameterId] {
+        &TABLA_SHOULDER_PARAMETERS
     }
 
     pub(crate) fn analysis() -> &'static [ParameterId] {
@@ -2206,6 +2797,7 @@ impl ParameterId {
             ParameterId::HandpanHigherDecay => "Higher decay",
             ParameterId::SupportLevel => "Drone",
             ParameterId::SupportPulse => "Pulse",
+            ParameterId::SupportTone => "Breath",
             ParameterId::SupportWidth => "Width",
             ParameterId::SupportWander => "Wander",
             ParameterId::SupportDrift => "Drift",
@@ -2213,11 +2805,12 @@ impl ParameterId {
             ParameterId::SupportFade => "Fade",
             ParameterId::ReverbHandpan => "Handpan send",
             ParameterId::ReverbSupport => "Accompaniment send",
-            ParameterId::ReverbDing => "Ding send",
+            ParameterId::ReverbDing => "Resonator send",
             ParameterId::ReverbRecent => "Recent send",
             ParameterId::ReverbSecond => "Second send",
             ParameterId::ReverbBass => "Bass send",
             ParameterId::ReverbEcho => "Echo send",
+            ParameterId::ReverbTabla => "Tabla send",
             ParameterId::ReverbDecay => "Decay",
             ParameterId::ReverbTone => "Tone",
             ParameterId::DingShape => "Shape",
@@ -2239,9 +2832,10 @@ impl ParameterId {
             ParameterId::MixDing => "Resonator",
             ParameterId::MixWaveshape => "Waveshape",
             ParameterId::MixTambura => "Tambura",
-            ParameterId::MixRecent => "Recent",
-            ParameterId::MixSecond => "Second",
-            ParameterId::MixBass => "Bass",
+            ParameterId::MixRecent => "Follower 1",
+            ParameterId::MixSecond => "Follower 2",
+            ParameterId::MixFollowers => "Followers",
+            ParameterId::MixBass => "Root drone",
             ParameterId::MixTaps => "Level",
             ParameterId::MixReverb => "Reverb",
             ParameterId::DecoDensity => "Density",
@@ -2250,10 +2844,13 @@ impl ParameterId {
             ParameterId::PanDing => "Resonator pan",
             ParameterId::PanWaveshape => "Waveshape pan",
             ParameterId::PanTambura => "Tambura pan",
-            ParameterId::PanRecent => "Recent pan",
-            ParameterId::PanSecond => "Second pan",
-            ParameterId::PanBass => "Bass pan",
+            ParameterId::PanRecent => "Follower 1 pan",
+            ParameterId::PanSecond => "Follower 2 pan",
+            ParameterId::PanFollowers => "Followers pan",
+            ParameterId::PanBass => "Root drone pan",
+            ParameterId::PanFmBass => "Bass pan",
             ParameterId::PanEcho => "Echo pan",
+            ParameterId::PanTabla => "Tabla pan",
             ParameterId::PanReverb => "Reverb pan",
             ParameterId::FormantRate => "Rate",
             ParameterId::FormantDepth => "Depth",
@@ -2268,10 +2865,36 @@ impl ParameterId {
             ParameterId::FmBassLevel => "Level",
             ParameterId::BassLineAmount => "Line amount",
             ParameterId::BassLineVariation => "Line variation",
+            ParameterId::TablaLineAmount => "Groove amount",
+            ParameterId::MixTabla => "Tabla level",
             ParameterId::BellsDecay => "Decay",
             ParameterId::BellsRatio => "Ratio",
             ParameterId::BellsIndex => "Index",
             ParameterId::BellsIndexDecay => "Index decay",
+            ParameterId::TablaCenterDecay
+            | ParameterId::TablaBetweenDecay
+            | ParameterId::TablaShoulderDecay => "Decay",
+            ParameterId::TablaCenterTone
+            | ParameterId::TablaBetweenTone
+            | ParameterId::TablaShoulderTone => "Tone",
+            ParameterId::TablaCenterNoise
+            | ParameterId::TablaBetweenNoise
+            | ParameterId::TablaShoulderNoise => "Noise",
+            ParameterId::TablaGlide => "Ga glide",
+            ParameterId::TablaBayanTune => "Bayan (semitones)",
+            ParameterId::TablaDayanTune => "Dayan (semitones)",
+            ParameterId::ReverbWaveshape => "Waveshape send",
+            ParameterId::ReverbTambura => "Tambura send",
+            ParameterId::ReverbFollowers => "Followers send",
+            ParameterId::TrimHandpan => "Trim",
+            ParameterId::TrimDing => "Trim",
+            ParameterId::TrimWaveshape => "Trim",
+            ParameterId::TrimTambura => "Trim",
+            ParameterId::TrimRoot => "Trim",
+            ParameterId::TrimFollowers => "Trim",
+            ParameterId::TrimFmBass => "Trim",
+            ParameterId::TrimTabla => "Trim",
+            ParameterId::TrimEcho => "Trim",
         }
     }
 
@@ -2312,6 +2935,7 @@ impl ParameterId {
             ParameterId::ReverbSecond => REVERB_SECOND_RANGE,
             ParameterId::ReverbBass => REVERB_BASS_RANGE,
             ParameterId::ReverbEcho => REVERB_ECHO_RANGE,
+            ParameterId::ReverbTabla => REVERB_TABLA_RANGE,
             ParameterId::ReverbDecay => REVERB_DECAY_RANGE,
             ParameterId::ReverbTone => REVERB_TONE_RANGE,
             ParameterId::DingShape => DING_SHAPE_RANGE,
@@ -2335,8 +2959,10 @@ impl ParameterId {
             | ParameterId::MixTambura
             | ParameterId::MixRecent
             | ParameterId::MixSecond
+            | ParameterId::MixFollowers
             | ParameterId::MixBass
             | ParameterId::MixTaps
+            | ParameterId::MixTabla
             | ParameterId::MixReverb => MIX_LEVEL_RANGE,
             ParameterId::DecoDensity => DECO_DENSITY_RANGE,
             ParameterId::DecoLagBeats => DECO_LAG_BEATS_RANGE,
@@ -2346,8 +2972,11 @@ impl ParameterId {
             | ParameterId::PanTambura
             | ParameterId::PanRecent
             | ParameterId::PanSecond
+            | ParameterId::PanFollowers
             | ParameterId::PanBass
+            | ParameterId::PanFmBass
             | ParameterId::PanEcho
+            | ParameterId::PanTabla
             | ParameterId::PanReverb => PAN_RANGE,
             ParameterId::FormantRate => FORMANT_RATE_RANGE,
             ParameterId::FormantDepth => FORMANT_DEPTH_RANGE,
@@ -2362,15 +2991,45 @@ impl ParameterId {
             ParameterId::FmBassLevel => FM_BASS_LEVEL_RANGE,
             ParameterId::BassLineAmount => BASS_LINE_AMOUNT_RANGE,
             ParameterId::BassLineVariation => BASS_LINE_VARIATION_RANGE,
+            ParameterId::TablaLineAmount => TABLA_LINE_AMOUNT_RANGE,
             ParameterId::BellsDecay => BELLS_DECAY_RANGE,
             ParameterId::BellsRatio => BELLS_RATIO_RANGE,
             ParameterId::BellsIndex => BELLS_INDEX_RANGE,
             ParameterId::BellsIndexDecay => BELLS_INDEX_DECAY_RANGE,
+            ParameterId::TablaCenterDecay
+            | ParameterId::TablaBetweenDecay
+            | ParameterId::TablaShoulderDecay => TABLA_DECAY_RANGE,
+            ParameterId::TablaCenterTone
+            | ParameterId::TablaBetweenTone
+            | ParameterId::TablaShoulderTone => TABLA_BRIGHTNESS_RANGE,
+            ParameterId::TablaCenterNoise
+            | ParameterId::TablaBetweenNoise
+            | ParameterId::TablaShoulderNoise => TABLA_NOISE_RANGE,
+            ParameterId::TablaGlide => TABLA_GLIDE_RANGE,
+            ParameterId::TablaBayanTune => TABLA_BAYAN_TUNE_RANGE,
+            ParameterId::TablaDayanTune => TABLA_DAYAN_TUNE_RANGE,
+            ParameterId::SupportTone => SUPPORT_TONE_RANGE,
+            ParameterId::ReverbWaveshape => REVERB_WAVESHAPE_RANGE,
+            ParameterId::ReverbTambura => REVERB_TAMBURA_RANGE,
+            ParameterId::ReverbFollowers => REVERB_FOLLOWERS_RANGE,
+            ParameterId::TrimHandpan => TRIM_RANGE,
+            ParameterId::TrimDing => TRIM_RANGE,
+            ParameterId::TrimWaveshape => TRIM_RANGE,
+            ParameterId::TrimTambura => TRIM_RANGE,
+            ParameterId::TrimRoot => TRIM_RANGE,
+            ParameterId::TrimFollowers => TRIM_RANGE,
+            ParameterId::TrimFmBass => TRIM_RANGE,
+            ParameterId::TrimTabla => TRIM_RANGE,
+            ParameterId::TrimEcho => TRIM_RANGE,
         }
     }
 
     fn clamp(self, value: f32) -> f32 {
         let (min, max) = self.range();
+        let value = match self {
+            ParameterId::TablaBayanTune | ParameterId::TablaDayanTune => value.round(),
+            _ => value,
+        };
         value.clamp(min, max)
     }
 
@@ -2427,13 +3086,18 @@ impl ParameterId {
             ParameterId::SupportDrift => format!("{value:.0} cents"),
             ParameterId::SupportMotion => format!("{value:.2}×"),
             ParameterId::SupportFade => format!("{value:.1} s"),
+            ParameterId::SupportTone => format!("{value:.2}"),
             ParameterId::ReverbHandpan
             | ParameterId::ReverbSupport
             | ParameterId::ReverbDing
+            | ParameterId::ReverbWaveshape
+            | ParameterId::ReverbTambura
+            | ParameterId::ReverbFollowers
             | ParameterId::ReverbRecent
             | ParameterId::ReverbSecond
             | ParameterId::ReverbBass
-            | ParameterId::ReverbEcho => format!("{value:.2}"),
+            | ParameterId::ReverbEcho
+            | ParameterId::ReverbTabla => format!("{value:.2}"),
             ParameterId::ReverbDecay => format!("{value:.1} s"),
             ParameterId::ReverbTone => format!("{value:.2}"),
             ParameterId::DingShape => format!("{value:.2}"),
@@ -2457,9 +3121,19 @@ impl ParameterId {
             | ParameterId::MixTambura
             | ParameterId::MixRecent
             | ParameterId::MixSecond
+            | ParameterId::MixFollowers
             | ParameterId::MixBass
             | ParameterId::MixTaps
             | ParameterId::MixReverb
+            | ParameterId::TrimHandpan
+            | ParameterId::TrimDing
+            | ParameterId::TrimWaveshape
+            | ParameterId::TrimTambura
+            | ParameterId::TrimRoot
+            | ParameterId::TrimFollowers
+            | ParameterId::TrimFmBass
+            | ParameterId::TrimTabla
+            | ParameterId::TrimEcho
             | ParameterId::DecoDensity => format!("{value:.2}"),
             ParameterId::DecoLagBeats => format!("{value:.1} beats"),
             ParameterId::PanHandpan
@@ -2468,8 +3142,11 @@ impl ParameterId {
             | ParameterId::PanTambura
             | ParameterId::PanRecent
             | ParameterId::PanSecond
+            | ParameterId::PanFollowers
             | ParameterId::PanBass
+            | ParameterId::PanFmBass
             | ParameterId::PanEcho
+            | ParameterId::PanTabla
             | ParameterId::PanReverb => format_pan(value),
             ParameterId::FormantRate => format!("{value:.2} Hz"),
             ParameterId::FormantDepth => format!("{value:.2} oct"),
@@ -2484,10 +3161,25 @@ impl ParameterId {
             | ParameterId::FmBassLevel
             | ParameterId::BassLineAmount
             | ParameterId::BassLineVariation
+            | ParameterId::TablaLineAmount
+            | ParameterId::MixTabla
             | ParameterId::BellsDecay
             | ParameterId::BellsRatio
             | ParameterId::BellsIndex
-            | ParameterId::BellsIndexDecay => format!("{value:.2}"),
+            | ParameterId::BellsIndexDecay
+            | ParameterId::TablaCenterDecay
+            | ParameterId::TablaCenterTone
+            | ParameterId::TablaCenterNoise
+            | ParameterId::TablaBetweenDecay
+            | ParameterId::TablaBetweenTone
+            | ParameterId::TablaBetweenNoise
+            | ParameterId::TablaShoulderDecay
+            | ParameterId::TablaShoulderTone
+            | ParameterId::TablaShoulderNoise
+            | ParameterId::TablaGlide => format!("{value:.2}"),
+            ParameterId::TablaBayanTune | ParameterId::TablaDayanTune => {
+                format!("{value:.0} st")
+            }
         }
     }
 
@@ -2534,6 +3226,7 @@ impl ParameterId {
             ParameterId::ReverbSecond => "reverb_second",
             ParameterId::ReverbBass => "reverb_bass",
             ParameterId::ReverbEcho => "reverb_echo",
+            ParameterId::ReverbTabla => "reverb_tabla",
             ParameterId::ReverbDecay => "reverb_decay",
             ParameterId::ReverbTone => "reverb_tone",
             ParameterId::DingShape => "ding_shape",
@@ -2557,6 +3250,7 @@ impl ParameterId {
             ParameterId::MixTambura => "mix_tambura",
             ParameterId::MixRecent => "mix_recent",
             ParameterId::MixSecond => "mix_second",
+            ParameterId::MixFollowers => "mix_followers",
             ParameterId::MixBass => "mix_bass",
             ParameterId::MixTaps => "mix_taps",
             ParameterId::MixReverb => "mix_reverb",
@@ -2568,8 +3262,11 @@ impl ParameterId {
             ParameterId::PanTambura => "pan_tambura",
             ParameterId::PanRecent => "pan_recent",
             ParameterId::PanSecond => "pan_second",
+            ParameterId::PanFollowers => "pan_followers",
             ParameterId::PanBass => "pan_bass",
+            ParameterId::PanFmBass => "pan_fm_bass",
             ParameterId::PanEcho => "pan_echo",
+            ParameterId::PanTabla => "pan_tabla",
             ParameterId::PanReverb => "pan_reverb",
             ParameterId::FormantRate => "formant_rate",
             ParameterId::FormantDepth => "formant_depth",
@@ -2584,10 +3281,37 @@ impl ParameterId {
             ParameterId::FmBassLevel => "fm_bass_level",
             ParameterId::BassLineAmount => "bass_line_amount",
             ParameterId::BassLineVariation => "bass_line_variation",
+            ParameterId::TablaLineAmount => "tabla_line_amount",
+            ParameterId::MixTabla => "mix_tabla",
             ParameterId::BellsDecay => "bells_decay",
             ParameterId::BellsRatio => "bells_ratio",
             ParameterId::BellsIndex => "bells_index",
             ParameterId::BellsIndexDecay => "bells_index_decay",
+            ParameterId::TablaCenterDecay => "tabla_center_decay",
+            ParameterId::TablaCenterTone => "tabla_center_tone",
+            ParameterId::TablaCenterNoise => "tabla_center_noise",
+            ParameterId::TablaBetweenDecay => "tabla_between_decay",
+            ParameterId::TablaBetweenTone => "tabla_between_tone",
+            ParameterId::TablaBetweenNoise => "tabla_between_noise",
+            ParameterId::TablaShoulderDecay => "tabla_shoulder_decay",
+            ParameterId::TablaShoulderTone => "tabla_shoulder_tone",
+            ParameterId::TablaShoulderNoise => "tabla_shoulder_noise",
+            ParameterId::TablaGlide => "tabla_glide",
+            ParameterId::TablaBayanTune => "tabla_bayan_tune",
+            ParameterId::TablaDayanTune => "tabla_dayan_tune",
+            ParameterId::SupportTone => "support_tone",
+            ParameterId::ReverbWaveshape => "reverb_waveshape",
+            ParameterId::ReverbTambura => "reverb_tambura",
+            ParameterId::ReverbFollowers => "reverb_followers",
+            ParameterId::TrimHandpan => "trim_handpan",
+            ParameterId::TrimDing => "trim_ding",
+            ParameterId::TrimWaveshape => "trim_waveshape",
+            ParameterId::TrimTambura => "trim_tambura",
+            ParameterId::TrimRoot => "trim_root",
+            ParameterId::TrimFollowers => "trim_followers",
+            ParameterId::TrimFmBass => "trim_fm_bass",
+            ParameterId::TrimTabla => "trim_tabla",
+            ParameterId::TrimEcho => "trim_echo",
         }
     }
 
@@ -2628,6 +3352,7 @@ impl ParameterId {
             "reverb_second" => Some(ParameterId::ReverbSecond),
             "reverb_bass" => Some(ParameterId::ReverbBass),
             "reverb_echo" => Some(ParameterId::ReverbEcho),
+            "reverb_tabla" => Some(ParameterId::ReverbTabla),
             "reverb_decay" => Some(ParameterId::ReverbDecay),
             "reverb_tone" => Some(ParameterId::ReverbTone),
             "ding_shape" => Some(ParameterId::DingShape),
@@ -2651,6 +3376,7 @@ impl ParameterId {
             "mix_tambura" => Some(ParameterId::MixTambura),
             "mix_recent" => Some(ParameterId::MixRecent),
             "mix_second" => Some(ParameterId::MixSecond),
+            "mix_followers" => Some(ParameterId::MixFollowers),
             "mix_bass" => Some(ParameterId::MixBass),
             "mix_taps" => Some(ParameterId::MixTaps),
             "mix_reverb" => Some(ParameterId::MixReverb),
@@ -2662,8 +3388,11 @@ impl ParameterId {
             "pan_tambura" => Some(ParameterId::PanTambura),
             "pan_recent" => Some(ParameterId::PanRecent),
             "pan_second" => Some(ParameterId::PanSecond),
+            "pan_followers" => Some(ParameterId::PanFollowers),
             "pan_bass" => Some(ParameterId::PanBass),
+            "pan_fm_bass" => Some(ParameterId::PanFmBass),
             "pan_echo" => Some(ParameterId::PanEcho),
+            "pan_tabla" => Some(ParameterId::PanTabla),
             "pan_reverb" => Some(ParameterId::PanReverb),
             "formant_rate" => Some(ParameterId::FormantRate),
             "formant_depth" => Some(ParameterId::FormantDepth),
@@ -2678,22 +3407,50 @@ impl ParameterId {
             "fm_bass_level" => Some(ParameterId::FmBassLevel),
             "bass_line_amount" => Some(ParameterId::BassLineAmount),
             "bass_line_variation" => Some(ParameterId::BassLineVariation),
+            "tabla_line_amount" => Some(ParameterId::TablaLineAmount),
+            "mix_tabla" => Some(ParameterId::MixTabla),
             "bells_decay" => Some(ParameterId::BellsDecay),
             "bells_ratio" => Some(ParameterId::BellsRatio),
             "bells_index" => Some(ParameterId::BellsIndex),
             "bells_index_decay" => Some(ParameterId::BellsIndexDecay),
+            "tabla_center_decay" | "tabla_decay" => Some(ParameterId::TablaCenterDecay),
+            "tabla_center_tone" | "tabla_brightness" => Some(ParameterId::TablaCenterTone),
+            "tabla_center_noise" => Some(ParameterId::TablaCenterNoise),
+            "tabla_between_decay" => Some(ParameterId::TablaBetweenDecay),
+            "tabla_between_tone" => Some(ParameterId::TablaBetweenTone),
+            "tabla_between_noise" => Some(ParameterId::TablaBetweenNoise),
+            "tabla_shoulder_decay" => Some(ParameterId::TablaShoulderDecay),
+            "tabla_shoulder_tone" => Some(ParameterId::TablaShoulderTone),
+            "tabla_shoulder_noise" => Some(ParameterId::TablaShoulderNoise),
+            "tabla_glide" => Some(ParameterId::TablaGlide),
+            "tabla_bayan_tune" => Some(ParameterId::TablaBayanTune),
+            "tabla_dayan_tune" => Some(ParameterId::TablaDayanTune),
+            "support_tone" => Some(ParameterId::SupportTone),
+            "reverb_waveshape" => Some(ParameterId::ReverbWaveshape),
+            "reverb_tambura" => Some(ParameterId::ReverbTambura),
+            "reverb_followers" => Some(ParameterId::ReverbFollowers),
+            "trim_handpan" => Some(ParameterId::TrimHandpan),
+            "trim_ding" => Some(ParameterId::TrimDing),
+            "trim_waveshape" => Some(ParameterId::TrimWaveshape),
+            "trim_tambura" => Some(ParameterId::TrimTambura),
+            "trim_root" => Some(ParameterId::TrimRoot),
+            "trim_followers" => Some(ParameterId::TrimFollowers),
+            "trim_fm_bass" => Some(ParameterId::TrimFmBass),
+            "trim_tabla" => Some(ParameterId::TrimTabla),
+            "trim_echo" => Some(ParameterId::TrimEcho),
             _ => None,
         }
     }
 }
 
 fn format_pan(value: f32) -> String {
+    // Fixed 3-character labels so mixer strips do not jump as pan moves.
     if (value - 0.5).abs() < 0.01 {
-        "C".to_string()
+        "  C".to_string()
     } else if value < 0.5 {
-        format!("L {:.0}", (0.5 - value) * 200.0)
+        format!("L{:>2.0}", (0.5 - value) * 200.0)
     } else {
-        format!("R {:.0}", (value - 0.5) * 200.0)
+        format!("R{:>2.0}", (value - 0.5) * 200.0)
     }
 }
 
@@ -2944,19 +3701,26 @@ fn main() -> anyhow::Result<()> {
     control.set_parameter_value(ParameterId::SupportDrift, snapshot.support_drift);
     control.set_parameter_value(ParameterId::SupportMotion, snapshot.support_motion);
     control.set_parameter_value(ParameterId::SupportFade, snapshot.support_fade);
+    control.set_parameter_value(ParameterId::SupportTone, snapshot.support_tone);
     control.set_parameter_value(ParameterId::ReverbHandpan, snapshot.reverb_handpan);
     control.set_parameter_value(ParameterId::ReverbSupport, snapshot.reverb_support);
     control.set_parameter_value(ParameterId::ReverbDing, snapshot.reverb_ding);
+    control.set_parameter_value(ParameterId::ReverbWaveshape, snapshot.reverb_waveshape);
+    control.set_parameter_value(ParameterId::ReverbTambura, snapshot.reverb_tambura);
+    control.set_parameter_value(ParameterId::ReverbFollowers, snapshot.reverb_followers);
     control.set_parameter_value(ParameterId::ReverbRecent, snapshot.reverb_recent);
     control.set_parameter_value(ParameterId::ReverbSecond, snapshot.reverb_second);
     control.set_parameter_value(ParameterId::ReverbBass, snapshot.reverb_bass);
     control.set_parameter_value(ParameterId::ReverbEcho, snapshot.reverb_echo);
+    control.set_parameter_value(ParameterId::ReverbTabla, snapshot.reverb_tabla);
     control.set_parameter_value(ParameterId::ReverbDecay, snapshot.reverb_decay);
     control.set_parameter_value(ParameterId::ReverbTone, snapshot.reverb_tone);
     control.set_echo_instrument_u8(snapshot.echo_instrument);
     control.set_support_parts(snapshot.support_muted, snapshot.support_solo);
     control.set_wash_parts(snapshot.wash_muted, snapshot.wash_solo);
     control.set_handpan_mute_solo(snapshot.handpan_muted, snapshot.handpan_solo);
+    control.set_bass_mute_solo(snapshot.bass_muted, snapshot.bass_solo);
+    control.set_tabla_mute_solo(snapshot.tabla_muted, snapshot.tabla_solo);
     control.set_reverb_mute_solo(snapshot.reverb_muted, snapshot.reverb_solo);
     control.set_ding_wash(snapshot.ding_wash);
     control.set_parameter_value(ParameterId::DingShape, snapshot.ding_shape);
@@ -2980,6 +3744,7 @@ fn main() -> anyhow::Result<()> {
     control.set_parameter_value(ParameterId::MixTambura, snapshot.mix_tambura);
     control.set_parameter_value(ParameterId::MixRecent, snapshot.mix_recent);
     control.set_parameter_value(ParameterId::MixSecond, snapshot.mix_second);
+    control.set_parameter_value(ParameterId::MixFollowers, snapshot.mix_followers);
     control.set_parameter_value(ParameterId::MixBass, snapshot.mix_bass);
     control.set_parameter_value(ParameterId::MixTaps, snapshot.mix_taps);
     control.set_parameter_value(ParameterId::MixReverb, snapshot.mix_reverb);
@@ -2991,8 +3756,11 @@ fn main() -> anyhow::Result<()> {
     control.set_parameter_value(ParameterId::PanTambura, snapshot.pan_tambura);
     control.set_parameter_value(ParameterId::PanRecent, snapshot.pan_recent);
     control.set_parameter_value(ParameterId::PanSecond, snapshot.pan_second);
+    control.set_parameter_value(ParameterId::PanFollowers, snapshot.pan_followers);
     control.set_parameter_value(ParameterId::PanBass, snapshot.pan_bass);
+    control.set_parameter_value(ParameterId::PanFmBass, snapshot.pan_fm_bass);
     control.set_parameter_value(ParameterId::PanEcho, snapshot.pan_echo);
+    control.set_parameter_value(ParameterId::PanTabla, snapshot.pan_tabla);
     control.set_parameter_value(ParameterId::PanReverb, snapshot.pan_reverb);
     control.set_parameter_value(ParameterId::FormantRate, snapshot.formant_rate);
     control.set_parameter_value(ParameterId::FormantDepth, snapshot.formant_depth);
@@ -3007,10 +3775,49 @@ fn main() -> anyhow::Result<()> {
     control.set_parameter_value(ParameterId::FmBassLevel, snapshot.fm_bass_level);
     control.set_parameter_value(ParameterId::BassLineAmount, snapshot.bass_line_amount);
     control.set_parameter_value(ParameterId::BassLineVariation, snapshot.bass_line_variation);
+    control.set_parameter_value(ParameterId::TablaLineAmount, snapshot.tabla_line_amount);
+    control.set_parameter_value(ParameterId::MixTabla, snapshot.mix_tabla);
+    control.set_tabla_groove_index(snapshot.tabla_groove_index);
     control.set_parameter_value(ParameterId::BellsDecay, snapshot.bells_decay);
     control.set_parameter_value(ParameterId::BellsRatio, snapshot.bells_ratio);
     control.set_parameter_value(ParameterId::BellsIndex, snapshot.bells_index);
     control.set_parameter_value(ParameterId::BellsIndexDecay, snapshot.bells_index_decay);
+    for (i, &value) in snapshot.tabla_row_decay.iter().enumerate() {
+        let id = match i {
+            0 => ParameterId::TablaCenterDecay,
+            1 => ParameterId::TablaBetweenDecay,
+            _ => ParameterId::TablaShoulderDecay,
+        };
+        control.set_parameter_value(id, value);
+    }
+    for (i, &value) in snapshot.tabla_row_tone.iter().enumerate() {
+        let id = match i {
+            0 => ParameterId::TablaCenterTone,
+            1 => ParameterId::TablaBetweenTone,
+            _ => ParameterId::TablaShoulderTone,
+        };
+        control.set_parameter_value(id, value);
+    }
+    for (i, &value) in snapshot.tabla_row_noise.iter().enumerate() {
+        let id = match i {
+            0 => ParameterId::TablaCenterNoise,
+            1 => ParameterId::TablaBetweenNoise,
+            _ => ParameterId::TablaShoulderNoise,
+        };
+        control.set_parameter_value(id, value);
+    }
+    control.set_parameter_value(ParameterId::TablaGlide, snapshot.tabla_glide);
+    control.set_parameter_value(ParameterId::TablaBayanTune, snapshot.tabla_bayan_tune);
+    control.set_parameter_value(ParameterId::TablaDayanTune, snapshot.tabla_dayan_tune);
+    control.set_parameter_value(ParameterId::TrimHandpan, snapshot.trim_handpan);
+    control.set_parameter_value(ParameterId::TrimDing, snapshot.trim_ding);
+    control.set_parameter_value(ParameterId::TrimWaveshape, snapshot.trim_waveshape);
+    control.set_parameter_value(ParameterId::TrimTambura, snapshot.trim_tambura);
+    control.set_parameter_value(ParameterId::TrimRoot, snapshot.trim_root);
+    control.set_parameter_value(ParameterId::TrimFollowers, snapshot.trim_followers);
+    control.set_parameter_value(ParameterId::TrimFmBass, snapshot.trim_fm_bass);
+    control.set_parameter_value(ParameterId::TrimTabla, snapshot.trim_tabla);
+    control.set_parameter_value(ParameterId::TrimEcho, snapshot.trim_echo);
     control.set_groove_click_enabled(snapshot.groove_click_enabled);
     control.set_groove_auto_lock(snapshot.groove_auto_lock);
 
@@ -3213,7 +4020,8 @@ fn handle_cc(ctx: &MidiContext, controller: u8, value: u8) {
 fn note_on(control: &Arc<ControlBlock>, note: u8, velocity: u8, place: f32) {
     let freq = midi_note_to_hz(note);
     let amp = (velocity as f32 / 127.0) * 0.25;
-    let place = place.clamp(0.0, 1.0);
+    // 0..1 = pad place; TABLA_GE_PLACE marks open bayan without palm glide.
+    let place = place.clamp(0.0, TABLA_GE_PLACE);
 
     control.active_note.store(note, Ordering::Relaxed);
     control.last_note_on_note.store(note, Ordering::Relaxed);
@@ -3313,7 +4121,10 @@ where
         let mut handpan = Handpan::new(cfg.sample_rate.0 as f32);
         let mut fm_bass = FmBass::new(cfg.sample_rate.0 as f32);
         let mut bass_line = BassLine::new(cfg.sample_rate.0 as f32);
+        let mut tabla_line = TablaLine::new(cfg.sample_rate.0 as f32);
+        let mut phrase = PhraseClock::new();
         let mut bells = Bells::new(cfg.sample_rate.0 as f32);
+        let mut tabla = Tabla::new(cfg.sample_rate.0 as f32);
         let mut resonator = DroneVoice::new(cfg.sample_rate.0 as f32, DroneVoiceKind::Resonator);
         let mut waveshape = DroneVoice::new(cfg.sample_rate.0 as f32, DroneVoiceKind::Waveshape);
         let mut tambura = DroneVoice::new(cfg.sample_rate.0 as f32, DroneVoiceKind::Tambura);
@@ -3340,7 +4151,8 @@ where
                 let triggered = !instrument_changed && trigger_seen != write;
                 trigger_seen = write;
 
-                let block_peak = if snapshot.instrument == Instrument::Handpan.as_u8() {
+                let (block_peak, channel_peaks) =
+                    if snapshot.instrument == Instrument::Handpan.as_u8() {
                     handpan.set_decay(snapshot.handpan_decay);
                     handpan.set_detune_cents(snapshot.handpan_detune_cents);
                     handpan.set_coupling(snapshot.handpan_coupling);
@@ -3355,9 +4167,11 @@ where
                     handpan.set_octave(snapshot.handpan_octave);
                     handpan.set_fifth(snapshot.handpan_fifth);
                     handpan.set_higher_decay(snapshot.handpan_higher_decay);
-                    // Wash Levels are the loudness controls; keep a fixed pad bus gain.
-                    support.set_level(DEFAULT_SUPPORT_LEVEL);
+                    // Unity pad bus so Support strip Levels share the Handpan mixer reference.
+                    // (DEFAULT_SUPPORT_LEVEL 0.35 was a pre-desk "quiet bed" attenuator.)
+                    support.set_level(1.0);
                     support.set_pulse(snapshot.support_pulse);
+                    support.set_tone(snapshot.support_tone);
                     support.set_width(snapshot.support_width);
                     support.set_wander(snapshot.support_wander);
                     support.set_drift(snapshot.support_drift);
@@ -3365,11 +4179,15 @@ where
                     support.set_fade(snapshot.support_fade);
                     support.set_parts(snapshot.support_muted, snapshot.support_solo);
                     support.set_wash_parts(snapshot.wash_muted, snapshot.wash_solo);
+                    // Wash solos are handled inside Support via wash_gain — do not
+                    // mark them as foreign_solo or the shared Root envelope zeros
+                    // Resonator / Waveshape / Tambura (including the soloed wash).
                     support.set_foreign_solo(
                         snapshot.handpan_solo
+                            || snapshot.bass_solo
+                            || snapshot.tabla_solo
                             || snapshot.reverb_solo
-                            || snapshot.support_solo != 0
-                            || snapshot.wash_solo != 0,
+                            || snapshot.support_solo != 0,
                     );
                     support.set_ding_wash(snapshot.ding_wash);
                     support.set_ding_shape(snapshot.ding_shape);
@@ -3388,15 +4206,15 @@ where
                     support.set_ding_formant_q(2, snapshot.ding_q_3);
                     support.set_formant_rate(snapshot.formant_rate);
                     support.set_formant_depth(snapshot.formant_depth);
-                    // Wash faders mix into Root; Root bus stays unity to avoid double attenuation.
-                    support.set_wash_level(0, snapshot.mix_ding);
-                    support.set_wash_level(1, snapshot.mix_waveshape);
-                    support.set_wash_level(2, snapshot.mix_tambura);
+                    // Instrument trim into the pad voices; mixer strip levels apply after.
+                    support.set_wash_level(0, snapshot.trim_ding);
+                    support.set_wash_level(1, snapshot.trim_waveshape);
+                    support.set_wash_level(2, snapshot.trim_tambura);
                     support.set_part_level(0, DEFAULT_MIX_LEVEL);
                     support.set_part_level(1, snapshot.mix_recent);
                     support.set_part_level(2, snapshot.mix_second);
-                    support.set_part_level(3, snapshot.mix_bass);
-                    support.set_part_level(4, snapshot.mix_taps);
+                    support.set_part_level(3, snapshot.trim_root);
+                    support.set_part_level(4, snapshot.trim_echo);
                     decorations.set_density(snapshot.deco_density);
                     decorations.set_lag_beats(snapshot.deco_lag_beats);
                     bells.set_decay(snapshot.bells_decay);
@@ -3404,12 +4222,13 @@ where
                     bells.set_index(snapshot.bells_index);
                     bells.set_index_decay(snapshot.bells_index_decay);
                     reverb.set_handpan_send(snapshot.reverb_handpan);
-                    // Shared pad-bus send covers Root washes + Recent/Second.
-                    reverb.set_ding_send(snapshot.reverb_ding);
-                    reverb.set_recent_send(snapshot.reverb_ding);
-                    reverb.set_second_send(snapshot.reverb_ding);
+                    // Pre-scale washes / followers; ding send stays unity.
+                    reverb.set_ding_send(1.0);
+                    reverb.set_recent_send(snapshot.reverb_followers);
+                    reverb.set_second_send(snapshot.reverb_followers);
                     reverb.set_bass_send(snapshot.reverb_bass);
                     reverb.set_echo_send(snapshot.reverb_echo);
+                    reverb.set_tabla_send(snapshot.reverb_tabla);
                     reverb.set_decay(snapshot.reverb_decay);
                     reverb.set_tone(snapshot.reverb_tone);
                     groove.set_sensitivity(snapshot.groove_sensitivity);
@@ -3435,6 +4254,23 @@ where
                     bass_line.set_amount(snapshot.bass_line_amount);
                     bass_line.set_variation(snapshot.bass_line_variation);
                     bass_line.set_layout(snapshot.handpan_scale, snapshot.handpan_ding);
+                    tabla_line.set_amount(snapshot.tabla_line_amount);
+                    tabla_line.set_groove_index(snapshot.tabla_groove_index as usize);
+                    tabla_line.set_layout(snapshot.handpan_scale, snapshot.handpan_ding);
+                    for i in 0..TABLA_ROWS {
+                        tabla.set_row(
+                            i,
+                            TablaRowParams {
+                                decay: snapshot.tabla_row_decay[i],
+                                tone: snapshot.tabla_row_tone[i],
+                                noise: snapshot.tabla_row_noise[i],
+                            },
+                        );
+                    }
+                    tabla.set_glide(snapshot.tabla_glide);
+                    tabla.set_bayan_tune(snapshot.tabla_bayan_tune);
+                    tabla.set_dayan_tune(snapshot.tabla_dayan_tune);
+                    tabla.set_ding(snapshot.handpan_ding);
                     if triggered {
                         for strike in strikes.iter().take(strike_count) {
                             handpan.strike_at(strike.0, strike.1, strike.2);
@@ -3444,9 +4280,13 @@ where
                             bass_line.hear(strike.0, strike.1);
                         }
                     }
-                    let deco_gain = support.echo_gain();
+                    let mix_taps_early =
+                        snapshot.mix_taps.clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
+                    let deco_gain = support.echo_gain() * mix_taps_early;
                     let echo_voice = EchoInstrument::from_u8(snapshot.echo_instrument);
                     let any_solo = snapshot.handpan_solo
+                        || snapshot.bass_solo
+                        || snapshot.tabla_solo
                         || snapshot.support_solo != 0
                         || snapshot.wash_solo != 0
                         || snapshot.reverb_solo;
@@ -3458,26 +4298,56 @@ where
                                 .mix_handpan
                                 .clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1)
                         };
-                    // Bass strip mute/solo is support part 3 — apply the same gate to
-                    // the FM Bass Line (Support's drone already uses part_gain).
-                    const BASS_PART_BIT: u8 = 1 << 3;
-                    let bass_muted = (snapshot.support_muted & BASS_PART_BIT) != 0;
-                    let bass_soloed = (snapshot.support_solo & BASS_PART_BIT) != 0;
-                    let fm_line_level = if bass_muted || (any_solo && !bass_soloed) {
+                    let trim_handpan = snapshot.trim_handpan.clamp(TRIM_RANGE.0, TRIM_RANGE.1);
+                    let trim_followers = snapshot.trim_followers.clamp(TRIM_RANGE.0, TRIM_RANGE.1);
+                    let trim_fm_bass = snapshot.trim_fm_bass.clamp(TRIM_RANGE.0, TRIM_RANGE.1);
+                    let trim_tabla = snapshot.trim_tabla.clamp(TRIM_RANGE.0, TRIM_RANGE.1);
+                    let mix_ding = snapshot.mix_ding.clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
+                    let mix_waveshape = snapshot
+                        .mix_waveshape
+                        .clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
+                    let mix_tambura = snapshot
+                        .mix_tambura
+                        .clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
+                    let mix_bass = snapshot.mix_bass.clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
+                    let mix_taps = mix_taps_early;
+                    let reverb_ding = snapshot
+                        .reverb_ding
+                        .clamp(REVERB_DING_RANGE.0, REVERB_DING_RANGE.1);
+                    let reverb_waveshape = snapshot
+                        .reverb_waveshape
+                        .clamp(REVERB_WAVESHAPE_RANGE.0, REVERB_WAVESHAPE_RANGE.1);
+                    let reverb_tambura = snapshot
+                        .reverb_tambura
+                        .clamp(REVERB_TAMBURA_RANGE.0, REVERB_TAMBURA_RANGE.1);
+                    // Groove FM bass line — separate from Support Root drone (part 3).
+                    let fm_line_level = if snapshot.bass_muted || (any_solo && !snapshot.bass_solo)
+                    {
                         0.0
                     } else {
                         snapshot
                             .fm_bass_level
                             .clamp(FM_BASS_LEVEL_RANGE.0, FM_BASS_LEVEL_RANGE.1)
                     };
+                    let mix_followers = snapshot
+                        .mix_followers
+                        .clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
+                    let mix_tabla = if snapshot.tabla_muted || (any_solo && !snapshot.tabla_solo) {
+                        0.0
+                    } else {
+                        snapshot
+                            .mix_tabla
+                            .clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1)
+                    };
                     let pan_handpan = snapshot.pan_handpan;
                     let pan_ding = snapshot.pan_ding;
                     let pan_waveshape = snapshot.pan_waveshape;
                     let pan_tambura = snapshot.pan_tambura;
-                    let pan_recent = snapshot.pan_recent;
-                    let pan_second = snapshot.pan_second;
+                    let pan_followers = snapshot.pan_followers;
                     let pan_bass = snapshot.pan_bass;
+                    let pan_fm_bass = snapshot.pan_fm_bass;
                     let pan_echo = snapshot.pan_echo;
+                    let pan_tabla = snapshot.pan_tabla;
                     let pan_reverb = snapshot.pan_reverb;
                     let reverb_level = if snapshot.reverb_muted {
                         0.0
@@ -3487,6 +4357,7 @@ where
                             .clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1)
                     };
                     let mut samples_in_block = 0u32;
+                    let mut channel_peaks = [0.0f32; MIX_CHANNEL_COUNT];
                     let peak = write_stereo_frames::<T>(data, channels, &audio_tap, || {
                         play_memory.tick(groove.tempo_locked(), groove.period_s());
                         let click = groove.tick();
@@ -3507,63 +4378,111 @@ where
                                 }
                             }
                         });
-                        bass_line.tick(&groove, |note, amp, place| {
-                            fm_bass.strike_at(note, amp, place);
-                        });
+                        phrase.set_phrase_len(tabla_line.phrase_len());
+                        if let Some(step) = phrase.tick(&groove) {
+                            tabla_line.on_phrase_step(step, |hit| {
+                                tabla.strike_stroke_at(hit.stroke, hit.note, hit.amp, hit.place);
+                            });
+                            bass_line.on_phrase_step(step, |note, amp, place| {
+                                fm_bass.strike_at(note, amp, place);
+                            });
+                        }
                         samples_in_block = samples_in_block.wrapping_add(1);
                         if samples_in_block.is_multiple_of(64) {
                             control.publish_groove(&groove.snapshot());
                         }
-                        let hand = handpan.next_sample() * mix_handpan;
-                        let line = StrikeVoice::next_sample(&mut fm_bass) * fm_line_level;
+                        let hand = handpan.next_sample() * trim_handpan * mix_handpan;
+                        let line =
+                            StrikeVoice::next_sample(&mut fm_bass) * trim_fm_bass * fm_line_level;
+                        let tabla_sig =
+                            StrikeVoice::next_sample(&mut tabla) * trim_tabla * mix_tabla;
                         let echo_sig = match echo_voice {
-                            EchoInstrument::Bells => StrikeVoice::next_sample(&mut bells),
+                            EchoInstrument::Bells => {
+                                StrikeVoice::next_sample(&mut bells) * mix_taps
+                            }
                             EchoInstrument::Handpan => 0.0,
                         };
                         let parts = support.next_parts().limited();
+                        let resonator = parts.resonator * mix_ding;
+                        let waveshape = parts.waveshape * mix_waveshape;
+                        let tambura = parts.tambura * mix_tambura;
+                        let root_drone = parts.bass * mix_bass;
                         let (hand_l, hand_r) = stereo_pan(pan_handpan);
                         let (res_l, res_r) = stereo_pan(pan_ding);
                         let (wave_l, wave_r) = stereo_pan(pan_waveshape);
                         let (tamb_l, tamb_r) = stereo_pan(pan_tambura);
-                        let (recent_l, recent_r) = stereo_pan(pan_recent);
-                        let (second_l, second_r) = stereo_pan(pan_second);
+                        let (fol_l, fol_r) = stereo_pan(pan_followers);
                         let (bass_l, bass_r) = stereo_pan(pan_bass);
+                        let (fm_l, fm_r) = stereo_pan(pan_fm_bass);
                         let (echo_l, echo_r) = stereo_pan(pan_echo);
+                        let (tabla_l, tabla_r) = stereo_pan(pan_tabla);
                         let (rev_l, rev_r) = stereo_pan(pan_reverb);
+                        let followers =
+                            (parts.recent + parts.second) * trim_followers * mix_followers;
+                        let wash_send = resonator * reverb_ding
+                            + waveshape * reverb_waveshape
+                            + tambura * reverb_tambura;
                         let (wet_l, wet_r) = reverb.next_wet(
                             hand,
-                            parts.ding(),
-                            parts.recent,
-                            parts.second,
-                            parts.bass,
+                            wash_send,
+                            parts.recent * trim_followers * mix_followers,
+                            parts.second * trim_followers * mix_followers,
+                            root_drone,
                             echo_sig,
+                            tabla_sig,
                         );
                         let wet_l = wet_l * reverb_level * rev_l;
                         let wet_r = wet_r * reverb_level * rev_r;
+                        bump_channel_peak(&mut channel_peaks, MixChannel::Handpan, hand.abs());
+                        bump_channel_peak(&mut channel_peaks, MixChannel::Resonator, resonator.abs());
+                        bump_channel_peak(
+                            &mut channel_peaks,
+                            MixChannel::Waveshape,
+                            waveshape.abs(),
+                        );
+                        bump_channel_peak(&mut channel_peaks, MixChannel::Tambura, tambura.abs());
+                        bump_channel_peak(
+                            &mut channel_peaks,
+                            MixChannel::RootDrone,
+                            root_drone.abs(),
+                        );
+                        bump_channel_peak(
+                            &mut channel_peaks,
+                            MixChannel::Followers,
+                            followers.abs(),
+                        );
+                        bump_channel_peak(&mut channel_peaks, MixChannel::FmBass, line.abs());
+                        bump_channel_peak(&mut channel_peaks, MixChannel::Tabla, tabla_sig.abs());
+                        bump_channel_peak(&mut channel_peaks, MixChannel::Echo, echo_sig.abs());
+                        bump_channel_peak(
+                            &mut channel_peaks,
+                            MixChannel::Reverb,
+                            wet_l.abs().max(wet_r.abs()),
+                        );
                         let dry_l = hand * hand_l
-                            + parts.resonator * res_l
-                            + parts.waveshape * wave_l
-                            + parts.tambura * tamb_l
-                            + parts.recent * recent_l
-                            + parts.second * second_l
-                            + parts.bass * bass_l
+                            + resonator * res_l
+                            + waveshape * wave_l
+                            + tambura * tamb_l
+                            + followers * fol_l
+                            + root_drone * bass_l
                             + echo_sig * echo_l
-                            + line
+                            + line * fm_l
+                            + tabla_sig * tabla_l
                             + click;
                         let dry_r = hand * hand_r
-                            + parts.resonator * res_r
-                            + parts.waveshape * wave_r
-                            + parts.tambura * tamb_r
-                            + parts.recent * recent_r
-                            + parts.second * second_r
-                            + parts.bass * bass_r
+                            + resonator * res_r
+                            + waveshape * wave_r
+                            + tambura * tamb_r
+                            + followers * fol_r
+                            + root_drone * bass_r
                             + echo_sig * echo_r
-                            + line
+                            + line * fm_r
+                            + tabla_sig * tabla_r
                             + click;
                         (dry_l + wet_l, dry_r + wet_r)
                     });
                     control.publish_groove(&groove.snapshot());
-                    peak
+                    (peak, channel_peaks)
                 } else if snapshot.instrument == Instrument::Bass.as_u8() {
                     fm_bass.set_decay(snapshot.fm_bass_decay);
                     fm_bass.set_ratio(snapshot.fm_bass_ratio);
@@ -3575,13 +4494,17 @@ where
                             fm_bass.strike_at(strike.0, strike.1, strike.2);
                         }
                     }
-                    let level = snapshot
-                        .fm_bass_level
-                        .clamp(FM_BASS_LEVEL_RANGE.0, FM_BASS_LEVEL_RANGE.1);
-                    write_stereo_frames::<T>(data, channels, &audio_tap, || {
+                    let level = snapshot.trim_fm_bass.clamp(TRIM_RANGE.0, TRIM_RANGE.1)
+                        * snapshot
+                            .fm_bass_level
+                            .clamp(FM_BASS_LEVEL_RANGE.0, FM_BASS_LEVEL_RANGE.1);
+                    let mut channel_peaks = [0.0f32; MIX_CHANNEL_COUNT];
+                    let peak = write_stereo_frames::<T>(data, channels, &audio_tap, || {
                         let mono = StrikeVoice::next_sample(&mut fm_bass) * level;
+                        bump_channel_peak(&mut channel_peaks, MixChannel::FmBass, mono.abs());
                         (mono, mono)
-                    })
+                    });
+                    (peak, channel_peaks)
                 } else if snapshot.instrument == Instrument::Bells.as_u8() {
                     bells.set_decay(snapshot.bells_decay);
                     bells.set_ratio(snapshot.bells_ratio);
@@ -3593,13 +4516,48 @@ where
                             bells.strike_at(strike.0, strike.1, strike.2);
                         }
                     }
-                    let level = snapshot
-                        .mix_taps
-                        .clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
-                    write_stereo_frames::<T>(data, channels, &audio_tap, || {
+                    let level = snapshot.trim_echo.clamp(TRIM_RANGE.0, TRIM_RANGE.1)
+                        * snapshot
+                            .mix_taps
+                            .clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
+                    let mut channel_peaks = [0.0f32; MIX_CHANNEL_COUNT];
+                    let peak = write_stereo_frames::<T>(data, channels, &audio_tap, || {
                         let mono = StrikeVoice::next_sample(&mut bells) * level;
+                        bump_channel_peak(&mut channel_peaks, MixChannel::Echo, mono.abs());
                         (mono, mono)
-                    })
+                    });
+                    (peak, channel_peaks)
+                } else if snapshot.instrument == Instrument::Tabla.as_u8() {
+                    for i in 0..TABLA_ROWS {
+                        tabla.set_row(
+                            i,
+                            TablaRowParams {
+                                decay: snapshot.tabla_row_decay[i],
+                                tone: snapshot.tabla_row_tone[i],
+                                noise: snapshot.tabla_row_noise[i],
+                            },
+                        );
+                    }
+                    tabla.set_glide(snapshot.tabla_glide);
+                    tabla.set_bayan_tune(snapshot.tabla_bayan_tune);
+                    tabla.set_dayan_tune(snapshot.tabla_dayan_tune);
+                    tabla.set_ding(snapshot.handpan_ding);
+                    if triggered {
+                        for strike in strikes.iter().take(strike_count) {
+                            tabla.strike_at(strike.0, strike.1, strike.2);
+                        }
+                    }
+                    let level = snapshot.trim_tabla.clamp(TRIM_RANGE.0, TRIM_RANGE.1)
+                        * snapshot
+                            .mix_taps
+                            .clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
+                    let mut channel_peaks = [0.0f32; MIX_CHANNEL_COUNT];
+                    let peak = write_stereo_frames::<T>(data, channels, &audio_tap, || {
+                        let mono = StrikeVoice::next_sample(&mut tabla) * level;
+                        bump_channel_peak(&mut channel_peaks, MixChannel::Tabla, mono.abs());
+                        (mono, mono)
+                    });
+                    (peak, channel_peaks)
                 } else if matches!(
                     Instrument::from_u8(snapshot.instrument),
                     Instrument::Resonator | Instrument::Waveshape | Instrument::Tambura
@@ -3615,16 +4573,31 @@ where
                             voice.strike_at(strike.0, strike.1, strike.2);
                         }
                     }
+                    let mix_channel = match Instrument::from_u8(snapshot.instrument) {
+                        Instrument::Waveshape => MixChannel::Waveshape,
+                        Instrument::Tambura => MixChannel::Tambura,
+                        _ => MixChannel::Resonator,
+                    };
+                    let trim = match Instrument::from_u8(snapshot.instrument) {
+                        Instrument::Waveshape => snapshot.trim_waveshape,
+                        Instrument::Tambura => snapshot.trim_tambura,
+                        _ => snapshot.trim_ding,
+                    }
+                    .clamp(TRIM_RANGE.0, TRIM_RANGE.1);
                     let level = match Instrument::from_u8(snapshot.instrument) {
                         Instrument::Waveshape => snapshot.mix_waveshape,
                         Instrument::Tambura => snapshot.mix_tambura,
                         _ => snapshot.mix_ding,
                     }
                     .clamp(DRONE_LEVEL_RANGE.0, DRONE_LEVEL_RANGE.1);
-                    write_stereo_frames::<T>(data, channels, &audio_tap, || {
+                    let level = trim * level;
+                    let mut channel_peaks = [0.0f32; MIX_CHANNEL_COUNT];
+                    let peak = write_stereo_frames::<T>(data, channels, &audio_tap, || {
                         let mono = StrikeVoice::next_sample(voice) * level;
+                        bump_channel_peak(&mut channel_peaks, mix_channel, mono.abs());
                         (mono, mono)
-                    })
+                    });
+                    (peak, channel_peaks)
                 } else {
                     engine.set_exciter_mode(ExciterMode::from_u8(snapshot.exciter_mode));
                     engine.set_gate(snapshot.gate);
@@ -3645,7 +4618,10 @@ where
                     if triggered {
                         engine.trigger(snapshot.amplitude);
                     }
-                    write_frames::<T>(data, channels, &audio_tap, || engine.next_sample())
+                    (
+                        write_frames::<T>(data, channels, &audio_tap, || engine.next_sample()),
+                        [0.0f32; MIX_CHANNEL_COUNT],
+                    )
                 };
                 let frames = if channels == 0 {
                     0
@@ -3655,6 +4631,7 @@ where
                 if frames > 0 {
                     let block_duration = frames as f32 / sample_rate_hz.max(1.0);
                     control.update_peak(block_peak, block_duration);
+                    control.update_channel_peaks(&channel_peaks, block_duration);
                 }
             },
             err_fn,
@@ -3709,6 +4686,12 @@ fn apply_drone_voice_params(voice: &mut DroneVoice, snapshot: &ControlSnapshot) 
     let root = handpan_interval_hz(ding, 0, tuning).max(1.0);
     let fifth = handpan_interval_hz(ding, 7, tuning);
     voice.set_fifth_ratio(fifth / root);
+}
+
+#[inline]
+fn bump_channel_peak(peaks: &mut [f32; MIX_CHANNEL_COUNT], channel: MixChannel, level: f32) {
+    let index = channel as usize;
+    peaks[index] = peaks[index].max(level);
 }
 
 #[inline]

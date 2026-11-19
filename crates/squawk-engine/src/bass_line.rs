@@ -1,9 +1,9 @@
 //! Groove-locked bass skeleton into a StrikeVoice.
 //!
-//! Simple v1: once the groove is locked, play the root on every beat — strong
-//! on 1, softer on 2/3/4. Variation / cell patterns stay as knobs for later.
+//! Shares a [`PhraseClock`](crate::phrase_clock::PhraseClock) with tabla: by
+//! default the root lands only on phrase sam (step 0). Variation is reserved
+//! for denser phrase placements later.
 
-use crate::groove::GrooveTracker;
 use crate::handpan::handpan_notes;
 
 pub const DEFAULT_BASS_LINE_AMOUNT: f32 = 0.7;
@@ -11,19 +11,20 @@ pub const BASS_LINE_AMOUNT_RANGE: (f32, f32) = (0.0, 1.0);
 pub const DEFAULT_BASS_LINE_VARIATION: f32 = 0.35;
 pub const BASS_LINE_VARIATION_RANGE: (f32, f32) = (0.0, 1.0);
 
+/// Phrase step where the bass root lands (sam / downbeat of the shared theka).
+pub const DEFAULT_BASS_PHRASE_HIT: u16 = 0;
+
 const PAD_COUNT: usize = 10;
 const MIN_AMP: f32 = 0.05;
-const BEAT1_AMP: f32 = 0.9;
-const OTHER_BEAT_AMP: f32 = 0.38;
+const SAM_AMP: f32 = 0.9;
 
-/// Schedules sparse bass strikes when the groove is locked.
+/// Schedules sparse bass strikes on a shared accompaniment phrase.
 pub struct BassLine {
     amount: f32,
     variation: f32,
+    /// Phrase step that triggers the root hit (0 = sam).
+    phrase_hit: u16,
     notes: [u8; PAD_COUNT],
-    prev_groove_phase: f32,
-    beat_in_bar: u8,
-    armed: bool,
 }
 
 impl BassLine {
@@ -31,10 +32,8 @@ impl BassLine {
         Self {
             amount: DEFAULT_BASS_LINE_AMOUNT,
             variation: DEFAULT_BASS_LINE_VARIATION,
+            phrase_hit: DEFAULT_BASS_PHRASE_HIT,
             notes: handpan_notes(0, 50),
-            prev_groove_phase: 0.0,
-            beat_in_bar: 0,
-            armed: false,
         }
     }
 
@@ -46,6 +45,14 @@ impl BassLine {
         self.variation = value.clamp(BASS_LINE_VARIATION_RANGE.0, BASS_LINE_VARIATION_RANGE.1);
     }
 
+    pub fn set_phrase_hit(&mut self, step: u16) {
+        self.phrase_hit = step;
+    }
+
+    pub fn phrase_hit(&self) -> u16 {
+        self.phrase_hit
+    }
+
     pub fn set_layout(&mut self, scale: u8, ding: u8) {
         self.notes = handpan_notes(scale, ding);
     }
@@ -53,42 +60,13 @@ impl BassLine {
     /// Live pad strike — reserved for future harmony following.
     pub fn hear(&mut self, _note: u8, _amp: f32) {}
 
-    /// Advance one sample with the groove. Emits due skeleton hits through `on_hit`.
-    pub fn tick(&mut self, groove: &GrooveTracker, mut on_hit: impl FnMut(u8, f32, f32)) {
-        if !groove.tempo_locked() || self.amount <= 0.0 {
-            self.armed = false;
-            self.beat_in_bar = 0;
-            self.prev_groove_phase = groove.phase();
+    /// Fire when the shared phrase clock lands on this line's hit step.
+    pub fn on_phrase_step(&self, step: u16, mut on_hit: impl FnMut(u8, f32, f32)) {
+        if self.amount <= 0.0 || step != self.phrase_hit {
             return;
         }
-
-        let groove_phase = groove.phase();
-        let wrapped = self.armed && groove_phase + 0.25 < self.prev_groove_phase;
-        self.prev_groove_phase = groove_phase;
-
-        if !self.armed {
-            // Align bar to the locked downbeat: next wrap starts beat 1.
-            self.armed = true;
-            self.beat_in_bar = 0;
-            // If we just locked (phase near 0), fire beat 1 immediately.
-            if groove_phase < 0.08 {
-                self.fire_beat(0, &mut on_hit);
-            }
-            return;
-        }
-
-        if !wrapped {
-            return;
-        }
-
-        self.beat_in_bar = (self.beat_in_bar + 1) % 4;
-        self.fire_beat(self.beat_in_bar, &mut on_hit);
-    }
-
-    fn fire_beat(&self, beat: u8, on_hit: &mut impl FnMut(u8, f32, f32)) {
         let note = self.notes[0]; // root / ding
-        let base = if beat == 0 { BEAT1_AMP } else { OTHER_BEAT_AMP };
-        let amp = (base * self.amount).clamp(MIN_AMP, 1.0);
+        let amp = (SAM_AMP * self.amount).clamp(MIN_AMP, 1.0);
         on_hit(note, amp, 0.0);
     }
 }
@@ -97,6 +75,7 @@ impl BassLine {
 mod tests {
     use super::*;
     use crate::groove::GrooveTracker;
+    use crate::phrase_clock::PhraseClock;
 
     const RATE: f32 = 48_000.0;
 
@@ -113,59 +92,48 @@ mod tests {
     }
 
     #[test]
-    fn silent_until_locked() {
+    fn amount_zero_stays_silent() {
         let mut line = BassLine::new(RATE);
-        let mut groove = GrooveTracker::new(RATE);
-        groove.set_auto_lock(false);
-        line.set_amount(1.0);
-        let mut hits = 0u32;
-        for _ in 0..(RATE as usize) {
-            line.tick(&groove, |_, _, _| hits += 1);
-            let _ = groove.tick();
-        }
-        assert_eq!(hits, 0);
-    }
-
-    #[test]
-    fn amount_zero_stays_silent_when_locked() {
-        let mut line = BassLine::new(RATE);
-        let mut groove = GrooveTracker::new(RATE);
-        lock_four_taps(&mut groove, 60.0 / 80.0);
         line.set_amount(0.0);
         let mut hits = 0u32;
-        for _ in 0..(RATE as usize * 2) {
-            line.tick(&groove, |_, _, _| hits += 1);
-            let _ = groove.tick();
-        }
+        line.on_phrase_step(0, |_, _, _| hits += 1);
         assert_eq!(hits, 0);
     }
 
     #[test]
-    fn four_on_floor_when_locked() {
+    fn only_fires_on_phrase_hit_step() {
         let mut line = BassLine::new(RATE);
-        let mut groove = GrooveTracker::new(RATE);
-        lock_four_taps(&mut groove, 60.0 / 80.0);
         line.set_amount(1.0);
+        line.set_phrase_hit(0);
         let mut hits = 0u32;
-        let mut strong = 0u32;
-        let seconds = 4.0;
-        for _ in 0..((RATE * seconds) as usize) {
-            line.tick(&groove, |_, amp, _| {
-                hits += 1;
-                if amp > 0.7 {
-                    strong += 1;
-                }
-            });
+        for step in 0..8u16 {
+            line.on_phrase_step(step, |_, _, _| hits += 1);
+        }
+        assert_eq!(hits, 1);
+    }
+
+    #[test]
+    fn once_per_phrase_with_shared_clock() {
+        let mut line = BassLine::new(RATE);
+        line.set_amount(1.0);
+        let mut clock = PhraseClock::new();
+        clock.set_phrase_len(8);
+        let mut groove = GrooveTracker::new(RATE);
+        let period_s = 60.0 / 80.0;
+        lock_four_taps(&mut groove, period_s);
+
+        let mut hits = 0u32;
+        let samples_per_beat = (period_s * RATE).round() as usize;
+        // Two full 8-beat phrases.
+        for _ in 0..(samples_per_beat * 16) {
+            if let Some(step) = clock.tick(&groove) {
+                line.on_phrase_step(step, |_, _, _| hits += 1);
+            }
             let _ = groove.tick();
         }
-        // ~80 BPM × 4s ≈ 5–6 beats; one hit per beat.
         assert!(
-            (5..=8).contains(&hits),
-            "expected roughly one hit per beat over {seconds}s, got {hits}"
-        );
-        assert!(
-            strong >= 1 && strong <= hits,
-            "expected some strong beat-1 hits, strong {strong} of {hits}"
+            (2..=3).contains(&hits),
+            "expected roughly one bass hit per 8-beat phrase, got {hits}"
         );
     }
 
@@ -174,17 +142,9 @@ mod tests {
         let mut line = BassLine::new(RATE);
         line.set_layout(0, 50);
         let root = handpan_notes(0, 50)[0];
-        let mut groove = GrooveTracker::new(RATE);
-        lock_four_taps(&mut groove, 60.0 / 90.0);
         line.set_amount(1.0);
         let mut note = 0u8;
-        for _ in 0..(RATE as usize) {
-            line.tick(&groove, |n, _, _| note = n);
-            let _ = groove.tick();
-            if note != 0 {
-                break;
-            }
-        }
+        line.on_phrase_step(0, |n, _, _| note = n);
         assert_eq!(note, root);
     }
 }

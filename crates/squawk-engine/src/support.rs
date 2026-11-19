@@ -20,6 +20,8 @@ pub const DEFAULT_SUPPORT_WANDER: f32 = 14.0;
 pub const DEFAULT_SUPPORT_DRIFT: f32 = 26.0;
 pub const DEFAULT_SUPPORT_MOTION: f32 = 1.0;
 pub const DEFAULT_SUPPORT_FADE: f32 = 4.0;
+/// 1 is today's noise-driven band; 0 is a clearer tonal drive.
+pub const DEFAULT_SUPPORT_TONE: f32 = 1.0;
 pub const SUPPORT_LEVEL_RANGE: (f32, f32) = (0.0, 1.0);
 pub const SUPPORT_PULSE_RANGE: (f32, f32) = (0.0, 1.0);
 pub const SUPPORT_WIDTH_RANGE: (f32, f32) = (0.0, 1.0);
@@ -27,9 +29,13 @@ pub const SUPPORT_WANDER_RANGE: (f32, f32) = (0.0, 40.0);
 pub const SUPPORT_DRIFT_RANGE: (f32, f32) = (0.0, 60.0);
 pub const SUPPORT_MOTION_RANGE: (f32, f32) = (0.25, 3.0);
 pub const SUPPORT_FADE_RANGE: (f32, f32) = (0.5, 12.0);
+pub const SUPPORT_TONE_RANGE: (f32, f32) = (0.0, 1.0);
 /// 1 keeps each part at the level it has today. 0 is silent and 2 is twice as loud.
 pub const DEFAULT_MIX_LEVEL: f32 = 1.0;
 pub const MIX_LEVEL_RANGE: (f32, f32) = (0.0, 2.0);
+/// Instrument trim before the mixer strip. 1 is unity; above 1 boosts quiet voices.
+pub const DEFAULT_TRIM: f32 = 1.0;
+pub const TRIM_RANGE: (f32, f32) = (0.0, 4.0);
 /// 0.5 is the center. Both speakers keep today's level.
 pub const DEFAULT_PAN: f32 = 0.5;
 pub const PAN_RANGE: (f32, f32) = (0.0, 1.0);
@@ -62,19 +68,23 @@ const DING_VOICES: usize = 3;
 const DEGREE_COUNT: usize = 10;
 const HISTORY: usize = 16;
 const DRONE_WINDOW: usize = 8;
-const BASS_WINDOW: usize = 16;
 const INTERVALS: usize = 6;
 const DRONE_COUNT: usize = 3;
 pub const SUPPORT_PARTS: usize = 5;
-pub const SUPPORT_PART_NAMES: [&str; SUPPORT_PARTS] = ["Root", "Recent", "Second", "Bass", "Echo"];
+pub const SUPPORT_PART_NAMES: [&str; SUPPORT_PARTS] =
+    ["Root", "Follower 1", "Follower 2", "Root drone", "Echo"];
 const SUPPORT_PART_MASK: u8 = (1 << SUPPORT_PARTS) - 1;
+/// Support part bit for the low Root drone pedal.
+pub const ROOT_DRONE_PART: usize = 3;
+const ROOT_DRONE_BIT: u8 = 1 << ROOT_DRONE_PART;
+/// Followers instrument mute/solo mask (Follower 1 + Follower 2).
+pub const FOLLOWERS_PART_MASK: u8 = (1 << 1) | (1 << 2);
 /// Resonator / Waveshape / Tambura mute and solo bits.
 pub const WASH_COUNT: usize = 3;
 const WASH_PART_MASK: u8 = (1 << WASH_COUNT) - 1;
 const FLAM_SECS: f32 = 0.080;
 const PAUSE_SECS: f32 = 2.5;
 const GLIDE_TAU_S: f32 = 0.45;
-const AGREE_BEATS: u8 = 4;
 const DRONE_ZETA: f32 = 0.010;
 const BASS_ZETA: f32 = 0.006;
 /// Slow random drift around the scale note. Small enough that the note stays put.
@@ -133,6 +143,8 @@ pub struct Support {
     sample: u64,
     level: f32,
     pulse: f32,
+    /// 0 = tonal sine drive on follower bands; 1 = full noise (breathy).
+    tone: f32,
     scale: u8,
     ding: u8,
     tuning: u8,
@@ -153,17 +165,16 @@ pub struct Support {
     phase: f32,
     glide: f32,
     wander_glide: f32,
-    /// Tone level. Zero until the first strike, then fades after a rest.
+    /// Tone level for washes / followers. Zero until the first strike, then fades after a rest.
     presence: f32,
+    /// Root drone level. Fades in on play, then holds until mute or level 0.
+    root_presence: f32,
     /// Swell depth. Falls ahead of the tone so the fade is not still pulsing.
     awake: f32,
     last_activity: Option<u64>,
     rise: f32,
     pulse_fall: f32,
     tone_fade: f32,
-    bass_degree: u8,
-    bass_pending: u8,
-    bass_votes: u8,
     drones: [Mode; DRONE_COUNT],
     bass: Mode,
     /// Bit set means that part is muted. Mute wins over solo on the same part.
@@ -212,6 +223,7 @@ impl Support {
             sample: 0,
             level: DEFAULT_SUPPORT_LEVEL,
             pulse: DEFAULT_SUPPORT_PULSE,
+            tone: DEFAULT_SUPPORT_TONE,
             scale: 0,
             ding: 50,
             tuning: 0,
@@ -236,14 +248,12 @@ impl Support {
             glide: 1.0 - (-dt / GLIDE_TAU_S).exp(),
             wander_glide: 1.0 - (-dt / WANDER_TAU_S).exp(),
             presence: 0.0,
+            root_presence: 0.0,
             awake: 0.0,
             last_activity: None,
             rise: 1.0 - (-dt / PRESENCE_RISE_S).exp(),
             pulse_fall: 1.0 - (-dt / PULSE_FALL_S).exp(),
             tone_fade: 1.0 - (-dt / TONE_FADE_S).exp(),
-            bass_degree: 0,
-            bass_pending: 0,
-            bass_votes: 0,
             drones: [
                 mode(ding_hz, DRONE_ZETA),
                 mode(ding_hz, DRONE_ZETA),
@@ -346,7 +356,7 @@ impl Support {
 
     pub fn set_wash_level(&mut self, index: usize, level: f32) {
         if let Some(slot) = self.wash_level.get_mut(index) {
-            *slot = level.clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
+            *slot = level.clamp(TRIM_RANGE.0, TRIM_RANGE.1);
         }
     }
 
@@ -420,6 +430,9 @@ impl Support {
     pub fn set_parts(&mut self, muted: u8, solo: u8) {
         self.muted = muted & SUPPORT_PART_MASK;
         self.solo = solo & SUPPORT_PART_MASK;
+        if (self.muted & ROOT_DRONE_BIT) != 0 {
+            self.root_presence = 0.0;
+        }
     }
 
     pub fn set_wash_parts(&mut self, muted: u8, solo: u8) {
@@ -433,12 +446,16 @@ impl Support {
 
     pub fn set_part_level(&mut self, part: usize, level: f32) {
         if let Some(slot) = self.part_level.get_mut(part) {
-            *slot = level.clamp(MIX_LEVEL_RANGE.0, MIX_LEVEL_RANGE.1);
+            *slot = level.clamp(TRIM_RANGE.0, TRIM_RANGE.1);
         }
     }
 
-    /// How loud an echoed pad hit should be. Zero while Echo is muted or another part is soloed.
+    /// How loud an echoed pad hit should be. Zero while Echo is muted, a wash is
+    /// soloed, or another accompaniment part is soloed.
     pub fn echo_gain(&self) -> f32 {
+        if self.wash_solo != 0 {
+            return 0.0;
+        }
         part_gain(
             self.muted,
             self.solo,
@@ -450,10 +467,18 @@ impl Support {
 
     pub fn set_level(&mut self, level: f32) {
         self.level = level.clamp(SUPPORT_LEVEL_RANGE.0, SUPPORT_LEVEL_RANGE.1);
+        if self.level <= 0.0 {
+            self.root_presence = 0.0;
+        }
     }
 
     pub fn set_pulse(&mut self, pulse: f32) {
         self.pulse = pulse.clamp(SUPPORT_PULSE_RANGE.0, SUPPORT_PULSE_RANGE.1);
+    }
+
+    /// 0 is a clearer tonal drive; 1 is today's noise-driven (breathy) band.
+    pub fn set_tone(&mut self, tone: f32) {
+        self.tone = tone.clamp(SUPPORT_TONE_RANGE.0, SUPPORT_TONE_RANGE.1);
     }
 
     /// 0 is a narrow tone. 1 is the wide band the layer started with.
@@ -512,7 +537,8 @@ impl Support {
         self.notes = handpan_notes(scale, ding);
         self.ready = true;
         self.retarget_drones();
-        self.bass.target_hz = self.bass_hz(self.bass_degree);
+        // Root drone stays on the key root (low), not a following degree.
+        self.bass.target_hz = self.bass_hz(0);
     }
 
     /// A handpan strike. `strength` is the same amplitude the handpan received.
@@ -536,7 +562,6 @@ impl Support {
         self.last_tempo_sample = Some(now);
         self.phase = 0.0;
         self.samples_since_strike = 0;
-        self.on_downbeat();
     }
 
     #[inline]
@@ -552,18 +577,60 @@ impl Support {
         self.phase += 1.0 / self.beat_samples.max(1.0);
         if self.phase >= 1.0 {
             self.phase -= 1.0;
-            self.on_downbeat();
         }
 
-        let root = step_band(&mut self.drones[0], self.dt, self.glide, self.wander_glide);
+        let root = step_band(
+            &mut self.drones[0],
+            self.dt,
+            self.glide,
+            self.wander_glide,
+            self.tone,
+        );
         let washes = self.step_ding(band_hz(&self.drones[0]), root);
-        let color_a = step_band(&mut self.drones[1], self.dt, self.glide, self.wander_glide);
-        let color_b = step_band(&mut self.drones[2], self.dt, self.glide, self.wander_glide);
+        let color_a = step_band(
+            &mut self.drones[1],
+            self.dt,
+            self.glide,
+            self.wander_glide,
+            self.tone,
+        );
+        let color_b = step_band(
+            &mut self.drones[2],
+            self.dt,
+            self.glide,
+            self.wander_glide,
+            self.tone,
+        );
+        // Keep Root drone locked on the key root while the layout can change under us.
+        self.bass.target_hz = self.bass_hz(0);
         step(&mut self.bass, self.dt, self.glide, 0.0024);
         self.follow_presence();
+        self.follow_root_presence();
+
+        let levels = self.part_level;
+        // A wash solo ducks Root drone / followers / echo; wash_gain isolates the wash.
+        let root_drone = if self.wash_solo != 0 {
+            0.0
+        } else {
+            self.bass.position
+                * 0.4
+                * part_gain(
+                    self.muted,
+                    self.solo,
+                    self.foreign_solo,
+                    &levels,
+                    ROOT_DRONE_PART,
+                )
+                * self.level
+                * self.root_presence
+        };
 
         if self.level <= 0.0 || self.presence <= 1.0e-4 {
-            return SupportParts::default();
+            // Root drone can keep sounding after pad presence has faded.
+            return SupportParts {
+                bass: root_drone,
+                ..SupportParts::default()
+            };
         }
         let pulse = if self.have_beat {
             self.pulse * self.awake
@@ -571,8 +638,6 @@ impl Support {
             0.0
         };
         let breath = 1.0 - pulse * 0.325 * (1.0 - (self.phase * TAU).cos());
-        let bass_breath = 0.7 + 0.3 * breath;
-        let levels = self.part_level;
         let presence = self.level * self.presence;
         let body = breath * 0.55 * presence;
         // Following pads duck when a wash is soloed or every wash is muted.
@@ -594,11 +659,7 @@ impl Support {
             tambura: washes[2] * root_gain,
             recent: color_a * 0.72 * recent_gain * body,
             second: color_b * 0.5 * second_gain * body,
-            bass: self.bass.position
-                * bass_breath
-                * 0.4
-                * part_gain(self.muted, self.solo, self.foreign_solo, &levels, 3)
-                * presence,
+            bass: root_drone,
         }
     }
 
@@ -613,6 +674,18 @@ impl Support {
         let target = if resting { 0.0 } else { 1.0 };
         self.presence += (target - self.presence) * tone_glide;
         self.awake += (target - self.awake) * pulse_glide;
+    }
+
+    /// Fade in on play, then hold. Mute or master level 0 clears it.
+    fn follow_root_presence(&mut self) {
+        if self.level <= 0.0 || (self.muted & ROOT_DRONE_BIT) != 0 {
+            self.root_presence = 0.0;
+            return;
+        }
+        if self.last_activity.is_none() {
+            return;
+        }
+        self.root_presence += (1.0 - self.root_presence) * self.rise;
     }
 
     fn nearest_degree(&self, note: u8) -> u8 {
@@ -707,25 +780,6 @@ impl Support {
         let (first, second) = leaders(&counts);
         self.drones[1].target_hz = self.degree_hz(first as u8);
         self.drones[2].target_hz = self.degree_hz(second.unwrap_or(first) as u8);
-    }
-
-    fn on_downbeat(&mut self) {
-        if self.history_count == 0 {
-            return;
-        }
-        let counts = self.counts(BASS_WINDOW, false);
-        let (best, _) = leaders(&counts);
-        let best = best as u8;
-        if best == self.bass_pending {
-            self.bass_votes = self.bass_votes.saturating_add(1);
-        } else {
-            self.bass_pending = best;
-            self.bass_votes = 1;
-        }
-        if self.bass_votes >= AGREE_BEATS && self.bass_degree != self.bass_pending {
-            self.bass_degree = self.bass_pending;
-            self.bass.target_hz = self.bass_hz(self.bass_degree);
-        }
     }
 
     /// All three Root washes keep running and mix by `wash_level`, then share formants.
@@ -1004,9 +1058,8 @@ fn leaders(counts: &[f32; DEGREE_COUNT]) -> (usize, Option<usize>) {
     (best, second)
 }
 
-/// A noise-driven resonance. Velocity is the band-pass output, so the mode
-/// sounds like a width of pitches around the note rather than a sine.
-fn step_band(mode: &mut Mode, dt: f32, glide: f32, wander_glide: f32) -> f32 {
+/// Band resonance. `tone` 1 is noise-driven (breathy); 0 is a clearer sine drive.
+fn step_band(mode: &mut Mode, dt: f32, glide: f32, wander_glide: f32, tone: f32) -> f32 {
     mode.hz += (mode.target_hz - mode.hz) * glide;
     if mode.wander_left == 0 {
         mode.wander_goal = noise(&mut mode.rng) * mode.wander_limit;
@@ -1020,12 +1073,16 @@ fn step_band(mode: &mut Mode, dt: f32, glide: f32, wander_glide: f32) -> f32 {
     mode.wander += (mode.wander_goal - mode.wander) * wander_glide;
     mode.lfo_phase = (mode.lfo_phase + mode.lfo_inc).fract();
     let hz = band_hz(mode);
+    mode.phase = (mode.phase + dt * hz).fract();
     let open = 0.5 + 0.5 * (mode.lfo_phase * TAU).cos();
     let zeta = mode.zeta_lo + (mode.zeta_hi - mode.zeta_lo) * open;
     let omega = TAU * hz;
     let stiffness = omega * omega;
     let damping = 2.0 * zeta * omega;
-    let drive = noise(&mut mode.rng) * mode.drive;
+    let tone = tone.clamp(0.0, 1.0);
+    let noise_drive = noise(&mut mode.rng) * mode.drive;
+    let sine_drive = mode.drive * (mode.phase * TAU).sin();
+    let drive = noise_drive * tone + sine_drive * (1.0 - tone);
     let acceleration = drive * stiffness - stiffness * mode.position - damping * mode.velocity;
     mode.velocity = (mode.velocity + acceleration * dt).clamp(-8_000.0, 8_000.0);
     mode.position = (mode.position + mode.velocity * dt).clamp(-2.0, 2.0);
@@ -1261,6 +1318,8 @@ mod tests {
         let mut support = Support::new(48_000.0);
         support.set_level(1.0);
         support.set_pulse(1.0);
+        // Root drone latches; this test covers wash / follower fade only.
+        support.set_part_level(ROOT_DRONE_PART, 0.0);
         assert_eq!(
             energy(&mut support, 48_000),
             0.0,
@@ -1556,6 +1615,30 @@ mod tests {
             "following pads leaked during wash solo: recent {} second {}",
             parts[1],
             parts[2]
+        );
+
+        // Regression: wash solo must not be treated as foreign_solo. That used to
+        // zero the shared Root envelope and silence the soloed wash itself.
+        let mut solo_with_foreign = ding_only(0, DEFAULT_DING_SHAPE);
+        park_formants(&mut solo_with_foreign);
+        solo_with_foreign.set_wash_level(0, 1.0);
+        solo_with_foreign.set_wash_level(1, 1.0);
+        solo_with_foreign.set_wash_parts(0, 1 << 1);
+        solo_with_foreign.set_foreign_solo(false);
+        let mut wash_e = 0.0f32;
+        let mut bass_e = 0.0f32;
+        for _ in 0..24_000 {
+            let p = solo_with_foreign.next_parts();
+            wash_e += p.waveshape * p.waveshape;
+            bass_e += p.bass * p.bass;
+        }
+        assert!(
+            wash_e > 1.0e-4,
+            "waveshape solo went silent without foreign_solo: {wash_e}"
+        );
+        assert!(
+            bass_e < 1.0e-8,
+            "root drone leaked during wash solo: {bass_e}"
         );
     }
 
@@ -1967,7 +2050,7 @@ mod tests {
     }
 
     #[test]
-    fn bass_waits_for_the_history_to_agree() {
+    fn root_drone_stays_on_the_key_root() {
         let mut support = Support::new(48_000.0);
         let ding_bass = handpan_interval_hz(50, 0, 0) * 0.5;
         for _ in 0..12 {
@@ -1976,23 +2059,80 @@ mod tests {
         }
         assert!(
             (support.bass.target_hz - ding_bass).abs() < 0.5,
-            "bass locked at {} Hz",
+            "root drone at {} Hz",
             support.bass.target_hz
         );
-        let locked = support.bass.target_hz;
-        support.hear(57, 0.8);
-        advance(&mut support, 24_000);
-        assert!((support.bass.target_hz - locked).abs() < 0.01);
-
-        let fifth_bass = handpan_interval_hz(50, 7, 0) * 0.5;
         for _ in 0..16 {
             advance(&mut support, 24_000);
             support.hear(57, 0.8);
         }
         assert!(
-            (support.bass.target_hz - fifth_bass).abs() < 0.5,
-            "bass moved to {} Hz",
+            (support.bass.target_hz - ding_bass).abs() < 0.5,
+            "root drone followed strikes to {} Hz",
             support.bass.target_hz
         );
+    }
+
+    #[test]
+    fn follower_levels_scale_independently() {
+        let mut support = ding_only(0, DEFAULT_DING_SHAPE);
+        park_formants(&mut support);
+        support.set_wash_level(0, 0.0);
+        support.set_wash_level(1, 0.0);
+        support.set_wash_level(2, 0.0);
+        support.set_parts(0, 0);
+        support.set_part_level(ROOT_DRONE_PART, 0.0);
+        support.set_part_level(1, 1.0);
+        support.set_part_level(2, 0.0);
+        let mut f1 = 0.0;
+        let mut f2 = 0.0;
+        for _ in 0..24_000 {
+            let p = support.next_parts();
+            f1 += p.recent * p.recent;
+            f2 += p.second * p.second;
+        }
+        assert!(f1 > 1.0e-4, "follower 1 silent: {f1}");
+        assert!(f2 < 1.0e-8, "follower 2 at zero still sounded: {f2}");
+    }
+
+    #[test]
+    fn root_drone_latches_while_followers_fade() {
+        let mut support = Support::new(48_000.0);
+        support.set_level(1.0);
+        support.set_fade(1.0);
+        support.set_parts(0, 0);
+        support.set_part_level(1, 1.0);
+        support.set_part_level(2, 1.0);
+        support.set_part_level(ROOT_DRONE_PART, 1.0);
+        support.set_wash_level(0, 0.0);
+        support.set_wash_level(1, 0.0);
+        support.set_wash_level(2, 0.0);
+        for _ in 0..8 {
+            support.hear(50, 1.0);
+            advance(&mut support, 6_000);
+        }
+        assert!(
+            support.root_presence > 0.85,
+            "root drone never faded in: {}",
+            support.root_presence
+        );
+        // Long rest: followers/presence fade; root drone holds.
+        advance(&mut support, (48_000.0 * 8.0) as usize);
+        assert!(
+            support.presence < 0.05,
+            "followers presence still up: {}",
+            support.presence
+        );
+        assert!(
+            support.root_presence > 0.85,
+            "root drone faded on rest: {}",
+            support.root_presence
+        );
+        let mut energy = 0.0;
+        for _ in 0..12_000 {
+            let p = support.next_parts();
+            energy += p.bass * p.bass;
+        }
+        assert!(energy > 1.0e-4, "latched root drone was silent: {energy}");
     }
 }
